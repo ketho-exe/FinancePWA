@@ -1,8 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #07111f;
+  --background: #08111d;
   --foreground: #f6f8fb;
+  --surface: rgba(20, 31, 51, 0.84);
+  --surface-elevated: rgba(28, 42, 68, 0.92);
+  --surface-soft: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text-secondary: #9fb0c9;
+  --text-muted: #7f91ab;
+  --accent: #87d1ff;
+  --accent-strong: #4bc0ff;
+  --success: #4ade80;
+  --warning: #f6c25b;
+  --error: #ff7f91;
 }
 
 @theme inline {
@@ -18,10 +30,14 @@
 
 html {
   background: var(--background);
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at top, rgba(70, 120, 196, 0.22), transparent 30%),
+    radial-gradient(circle at 85% 20%, rgba(59, 130, 246, 0.1), transparent 20%),
+    linear-gradient(180deg, #0a1628 0%, #08111d 36%, #07101b 100%);
   color: var(--foreground);
   font-family: var(--font-sans);
   margin: 0;
@@ -35,10 +51,54 @@ a {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(135, 209, 255, 0.9);
+  outline-offset: 2px;
 }
 
 ::selection {
   background: rgba(52, 211, 153, 0.28);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

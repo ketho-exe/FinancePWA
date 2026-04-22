@@ -559,7 +559,6 @@ export function FinanceApp() {
     displayName: "",
   });
 
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
   const [members, setMembers] = useState<Profile[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -619,7 +618,6 @@ export function FinanceApp() {
       if (!active) return;
       setSession(data.session);
       if (!data.session) {
-        setProfile(null);
         setWorkspace(null);
         setMembers([]);
         setCategories([]);
@@ -638,7 +636,6 @@ export function FinanceApp() {
       if (!active) return;
       setSession(nextSession);
       if (!nextSession) {
-        setProfile(null);
         setWorkspace(null);
         setMembers([]);
         setCategories([]);
@@ -672,7 +669,6 @@ export function FinanceApp() {
         const bundle = await loadWorkspaceBundle(user);
         if (!active) return;
 
-        setProfile(bundle.profile);
         setWorkspace(bundle.workspace);
         setMembers(bundle.members);
         setCategories(bundle.categories);
@@ -804,7 +800,6 @@ export function FinanceApp() {
     if (!session?.user) return;
 
     const bundle = await loadWorkspaceBundle(session.user);
-    setProfile(bundle.profile);
     setWorkspace(bundle.workspace);
     setMembers(bundle.members);
     setCategories(bundle.categories);
@@ -1225,81 +1220,87 @@ export function FinanceApp() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#16314f_0%,#0b1830_32%,#060d18_72%,#04070d_100%)] text-slate-100">
-      <div className="mx-auto min-h-screen w-full max-w-7xl px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pb-10">
+    <main className="min-h-screen text-slate-100">
+      <div className="mx-auto min-h-screen w-full max-w-[1380px] px-4 pb-24 pt-4 sm:px-6 lg:px-8 lg:pb-12 lg:pt-6">
         {toast ? <ToastBanner kind={toast.kind} message={toast.message} /> : null}
-        <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-          <div className="rounded-[32px] border border-white/10 bg-white/8 p-5 shadow-[0_30px_120px_rgba(2,6,23,0.45)] backdrop-blur-xl sm:p-6">
-            <div className="flex items-start justify-between gap-4">
+        <section className="animate-[panel-in_220ms_ease-out] rounded-[32px] border border-white/10 bg-[rgba(12,20,34,0.84)] p-4 shadow-[0_26px_90px_rgba(2,6,23,0.36)] backdrop-blur-xl sm:p-5">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-200/78">
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2">
+                  Shared finance workspace
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2">
+                  {members.length || 1} member{members.length === 1 ? "" : "s"}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2">
+                  {formatMonthLabel(currentMonth)}
+                </span>
+              </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-200/72">
-                  Shared workspace
-                </p>
-                <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">
+                <h1 className="text-3xl font-semibold tracking-[-0.05em] text-white sm:text-4xl lg:text-5xl">
                   {workspace?.name ?? "Finance Space"}
                 </h1>
-                <p className="mt-3 max-w-lg text-sm leading-6 text-slate-300 sm:text-base">
-                  Simple monthly tracking for the people sharing this finance space.
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                  A calm shared finance hub for budgets, salary planning, savings pots, and the day-to-day money moves that shape the month.
                 </p>
               </div>
-              <div className="flex flex-col items-end gap-3">
-                <div className="rounded-[24px] border border-emerald-300/18 bg-emerald-400/12 px-3 py-2 text-right shadow-inner shadow-emerald-950/20">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-200/80">
-                    This month
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-emerald-50">
-                    {formatMonthLabel(currentMonth)}
-                  </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label="Income" value={formatCurrency(incomeTotal)} tone="income" />
+                <MetricCard label="Spent" value={formatCurrency(expenseTotal)} tone="expense" />
+                <MetricCard
+                  label="Budget Left"
+                  value={formatCurrency(remainingBudget)}
+                  tone={remainingBudget >= 0 ? "neutral" : "expense"}
+                />
+                <MetricCard label="Saved" value={formatCurrency(totalSavings)} tone="neutral" />
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:w-[360px] lg:flex-none">
+              <div className="rounded-[28px] border border-white/10 bg-[rgba(255,255,255,0.045)] p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-200/72">
+                  Workspace members
+                </p>
+                <div className="mt-3 space-y-3">
+                  {members.length > 0 ? (
+                    members.map((member) => (
+                      <div
+                        key={member.id}
+                        className="flex items-center justify-between rounded-[20px] border border-white/8 bg-white/5 px-4 py-3"
+                      >
+                        <div>
+                          <div className="text-sm font-semibold text-slate-100">{member.displayName}</div>
+                          <div className="text-sm text-slate-400">{member.email}</div>
+                        </div>
+                        <span className="rounded-full border border-cyan-300/18 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100">
+                          Member
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <EmptyPanel
+                      title="Shared view"
+                      description="Members will appear here once the workspace data loads."
+                    />
+                  )}
                 </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="rounded-full border border-white/10 bg-white/8 px-4 py-2 text-sm font-semibold text-slate-100"
+                  className="rounded-full border border-white/10 bg-white/6 px-4 py-2.5 text-sm font-semibold text-slate-100 hover:bg-white/10"
                 >
                   Sign out
                 </button>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-4">
-              <MetricCard label="Income" value={formatCurrency(incomeTotal)} tone="income" />
-              <MetricCard label="Spent" value={formatCurrency(expenseTotal)} tone="expense" />
-              <MetricCard
-                label="Left"
-                value={formatCurrency(remainingBudget)}
-                tone={remainingBudget >= 0 ? "neutral" : "expense"}
-              />
-              <MetricCard label="Saved" value={formatCurrency(totalSavings)} tone="neutral" />
-            </div>
-          </div>
-
-          <div className="rounded-[32px] border border-white/10 bg-slate-950/55 p-5 shadow-[0_30px_120px_rgba(2,6,23,0.42)] backdrop-blur-xl sm:p-6">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-200/70">
-                Workspace members
-              </p>
-              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-white">
-                {profile ? `Signed in as ${profile.displayName}` : "Shared view"}
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-400">
-                Each person signs in separately, but your budgets and transactions live together.
-              </p>
-            </div>
-            <div className="mt-5 space-y-3">
-              {members.map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center justify-between rounded-[24px] border border-white/8 bg-white/6 px-4 py-3"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-slate-100">{member.displayName}</div>
-                    <div className="text-sm text-slate-400">{member.email}</div>
-                  </div>
-                  <span className="rounded-full border border-cyan-300/18 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100">
-                    Member
+                {dataLoading ? (
+                  <span className="rounded-full border border-white/8 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+                    Syncing
                   </span>
-                </div>
-              ))}
+                ) : null}
+              </div>
             </div>
           </div>
         </section>
@@ -1310,12 +1311,17 @@ export function FinanceApp() {
           </div>
         ) : null}
 
-        <section className="mt-5 hidden items-center gap-2 overflow-x-auto pb-1 lg:flex">
-          <TabButtons activeTab={activeTab} onSelect={setActiveTab} />
+        <section className="sticky top-0 z-20 mt-5 overflow-x-auto rounded-[24px] border border-white/8 bg-[rgba(10,16,28,0.74)] p-2 shadow-[0_20px_50px_rgba(2,6,23,0.2)] backdrop-blur-xl">
+          <div className="flex min-w-max items-center gap-2">
+            <div className="hidden pr-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 lg:block">
+              Navigation
+            </div>
+            <TabButtons activeTab={activeTab} onSelect={setActiveTab} />
+          </div>
         </section>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr] xl:grid-cols-[1.2fr_0.8fr]">
-          <section className="space-y-4">
+          <section className="space-y-4 animate-[panel-in_220ms_ease-out]">
             {activeTab === "dashboard" && (
               <>
                 <Card>
@@ -2388,6 +2394,21 @@ function ToastBanner({
   );
 }
 
+function EmptyPanel({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-[22px] border border-dashed border-white/12 bg-white/4 px-4 py-4">
+      <div className="text-sm font-semibold text-white">{title}</div>
+      <div className="mt-1 text-sm leading-6 text-slate-400">{description}</div>
+    </div>
+  );
+}
+
 function TabButtons({
   activeTab,
   onSelect,
@@ -2409,7 +2430,9 @@ function TabButtons({
           } ${
             activeTab === tab.id
               ? "bg-white text-slate-950 shadow-lg shadow-black/30"
-              : "bg-white/8 text-slate-300 hover:bg-white/12"
+              : tab.id === "add"
+                ? "bg-cyan-300/12 text-cyan-100 hover:bg-cyan-300/20"
+                : "bg-white/8 text-slate-300 hover:bg-white/12"
           }`}
         >
           {tab.label}
@@ -2421,7 +2444,7 @@ function TabButtons({
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <section className="rounded-[30px] border border-white/10 bg-white/7 p-5 shadow-[0_24px_80px_rgba(2,6,23,0.36)] backdrop-blur-xl sm:p-6">
+    <section className="rounded-[30px] border border-white/10 bg-[rgba(18,27,44,0.8)] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.24)] backdrop-blur-xl sm:p-6">
       {children}
     </section>
   );
@@ -2438,9 +2461,9 @@ function SectionHeader({
 }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{eyebrow}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-200/66">{eyebrow}</p>
       <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-white">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">{description}</p>
     </div>
   );
 }
@@ -2462,7 +2485,7 @@ function MetricCard({
         : "border border-cyan-300/14 bg-cyan-300/10 text-cyan-50";
 
   return (
-    <div className={`rounded-[26px] px-4 py-4 ${toneClass}`}>
+    <div className={`rounded-[26px] px-4 py-4 shadow-inner shadow-black/8 ${toneClass}`}>
       <p className="text-xs font-semibold uppercase tracking-[0.18em] opacity-70">{label}</p>
       <p className="mt-2 text-lg font-semibold tracking-[-0.03em]">{value}</p>
     </div>
