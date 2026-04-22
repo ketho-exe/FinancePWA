@@ -33,6 +33,9 @@ create table if not exists public.recurring_transactions (
 );
 
 alter table public.transactions
+  drop constraint if exists transactions_recurring_transaction_id_fkey;
+
+alter table public.transactions
   add constraint transactions_recurring_transaction_id_fkey
   foreign key (recurring_transaction_id) references public.recurring_transactions (id) on delete set null;
 
