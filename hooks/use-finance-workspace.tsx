@@ -59,6 +59,7 @@ type WorkspaceSummary = {
 
 type AuthMode = "sign-in" | "sign-up";
 const WORKSPACE_LOAD_TIMEOUT_MS = 15000;
+const WORKSPACE_CACHE_KEY = "finance-workspace-cache-v1";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
   return new Promise<T>((resolve, reject) => {
@@ -194,6 +195,38 @@ type FinanceWorkspaceContextValue = {
 
 const FinanceWorkspaceContext = createContext<FinanceWorkspaceContextValue | null>(null);
 
+function readWorkspaceCache(): WorkspaceBundle | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(WORKSPACE_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as WorkspaceBundle;
+  } catch {
+    return null;
+  }
+}
+
+function writeWorkspaceCache(bundle: WorkspaceBundle) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(WORKSPACE_CACHE_KEY, JSON.stringify(bundle));
+  } catch {
+    // Ignore cache write errors.
+  }
+}
+
+function clearWorkspaceCache() {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.removeItem(WORKSPACE_CACHE_KEY);
+  } catch {
+    // Ignore cache clear errors.
+  }
+}
+
 export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(hasSupabase);
@@ -249,6 +282,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setTransactionTagMaps(bundle.transactionTagMaps);
       setTransactionHistory(bundle.transactionHistory);
     });
+    writeWorkspaceCache(bundle);
   }
 
   async function refreshWorkspaceData() {
@@ -282,6 +316,11 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     if (!hasSupabase) return;
     let active = true;
+    const cachedBundle = readWorkspaceCache();
+
+    if (cachedBundle) {
+      void applyBundle(cachedBundle);
+    }
 
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
@@ -313,6 +352,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
       if (!nextSession && event === "SIGNED_OUT") {
         lastLoadedUserIdRef.current = null;
+        clearWorkspaceCache();
         setWorkspace(null);
         setMembers([]);
         setCategories([]);
