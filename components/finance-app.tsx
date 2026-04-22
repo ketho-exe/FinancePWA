@@ -19,10 +19,11 @@ import {
   calculateSalaryBreakdown,
   getSalaryPeriodTakeHome,
 } from "@/lib/payroll";
-import { createSupabaseBrowserClient } from "@/lib/supabase";
+import { supabaseBrowserClient } from "@/lib/supabase";
 import { formatCurrency, formatMonthLabel, formatShortDate } from "@/lib/utils";
 
-const supabase = createSupabaseBrowserClient();
+const hasSupabase = Boolean(supabaseBrowserClient);
+const supabase = supabaseBrowserClient as NonNullable<typeof supabaseBrowserClient>;
 
 const today = new Date().toISOString().slice(0, 10);
 const currentMonth = today.slice(0, 7);
@@ -546,7 +547,7 @@ async function loadWorkspaceBundle(user: User) {
 export function FinanceApp() {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [session, setSession] = useState<Session | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(hasSupabase);
   const [dataLoading, setDataLoading] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("sign-in");
   const [authMessage, setAuthMessage] = useState("");
@@ -612,6 +613,8 @@ export function FinanceApp() {
   const incomeCategories = categories.filter((category) => category.type === "income");
 
   useEffect(() => {
+    if (!hasSupabase) return;
+
     let active = true;
 
     supabase.auth.getSession().then(({ data }) => {
@@ -655,6 +658,7 @@ export function FinanceApp() {
   }, []);
 
   useEffect(() => {
+    if (!hasSupabase) return;
     if (!session?.user) return;
 
     let active = true;
@@ -1200,6 +1204,10 @@ export function FinanceApp() {
     return <LoadingScreen label="Checking your session..." />;
   }
 
+  if (!hasSupabase) {
+    return <ConfigScreen />;
+  }
+
   if (!session) {
     return (
       <AuthScreen
@@ -1220,28 +1228,28 @@ export function FinanceApp() {
   }
 
   return (
-    <main className="min-h-screen text-slate-100">
-      <div className="mx-auto min-h-screen w-full max-w-[1380px] px-4 pb-24 pt-4 sm:px-6 lg:px-8 lg:pb-12 lg:pt-6">
+    <main className="app-page-shell">
+      <div className="mx-auto min-h-screen w-full max-w-[var(--layout-max-width-wide)] px-4 pb-8 pt-4 sm:px-6 lg:px-8 lg:pb-12 lg:pt-6">
         {toast ? <ToastBanner kind={toast.kind} message={toast.message} /> : null}
-        <section className="animate-[panel-in_220ms_ease-out] rounded-[32px] border border-white/10 bg-[rgba(12,20,34,0.84)] p-4 shadow-[0_26px_90px_rgba(2,6,23,0.36)] backdrop-blur-xl sm:p-5">
+        <section className="app-hero animate-[panel-in_var(--duration-slow)_var(--easing-decelerate)] p-4 sm:p-5">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-200/78">
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] app-section-eyebrow">
+                <span className="app-pill px-3 py-2">
                   Shared finance workspace
                 </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2">
+                <span className="app-pill px-3 py-2">
                   {members.length || 1} member{members.length === 1 ? "" : "s"}
                 </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-2">
+                <span className="app-pill px-3 py-2">
                   {formatMonthLabel(currentMonth)}
                 </span>
               </div>
               <div>
-                <h1 className="text-3xl font-semibold tracking-[-0.05em] text-white sm:text-4xl lg:text-5xl">
+                <h1 className="text-3xl font-semibold tracking-[-0.05em] text-foreground sm:text-4xl lg:text-5xl">
                   {workspace?.name ?? "Finance Space"}
                 </h1>
-                <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--color-text-secondary)] sm:text-base">
                   A calm shared finance hub for budgets, salary planning, savings pots, and the day-to-day money moves that shape the month.
                 </p>
               </div>
@@ -1258,8 +1266,8 @@ export function FinanceApp() {
             </div>
 
             <div className="grid gap-4 lg:w-[360px] lg:flex-none">
-              <div className="rounded-[28px] border border-white/10 bg-[rgba(255,255,255,0.045)] p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-200/72">
+              <div className="app-panel p-5">
+                <p className="app-section-eyebrow text-xs font-semibold uppercase tracking-[0.24em] opacity-70">
                   Workspace members
                 </p>
                 <div className="mt-3 space-y-3">
@@ -1267,13 +1275,13 @@ export function FinanceApp() {
                     members.map((member) => (
                       <div
                         key={member.id}
-                        className="flex items-center justify-between rounded-[20px] border border-white/8 bg-white/5 px-4 py-3"
+                        className="app-row flex items-center justify-between rounded-[20px] px-4 py-3"
                       >
                         <div>
-                          <div className="text-sm font-semibold text-slate-100">{member.displayName}</div>
-                          <div className="text-sm text-slate-400">{member.email}</div>
+                          <div className="text-sm font-semibold text-foreground">{member.displayName}</div>
+                          <div className="text-sm text-[var(--color-text-tertiary)]">{member.email}</div>
                         </div>
-                        <span className="rounded-full border border-cyan-300/18 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100">
+                        <span className="app-pill app-pill--accent px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
                           Member
                         </span>
                       </div>
@@ -1291,12 +1299,12 @@ export function FinanceApp() {
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="rounded-full border border-white/10 bg-white/6 px-4 py-2.5 text-sm font-semibold text-slate-100 hover:bg-white/10"
+                  className="app-button app-button--ghost rounded-full px-4 py-2.5 text-sm"
                 >
                   Sign out
                 </button>
                 {dataLoading ? (
-                  <span className="rounded-full border border-white/8 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+                  <span className="app-pill px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em]">
                     Syncing
                   </span>
                 ) : null}
@@ -1306,14 +1314,14 @@ export function FinanceApp() {
         </section>
 
         {dataError ? (
-          <div className="mt-5 rounded-[24px] border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm text-rose-100">
+          <div className="app-feedback app-feedback--error mt-5">
             {dataError}
           </div>
         ) : null}
 
-        <section className="sticky top-0 z-20 mt-5 overflow-x-auto rounded-[24px] border border-white/8 bg-[rgba(10,16,28,0.74)] p-2 shadow-[0_20px_50px_rgba(2,6,23,0.2)] backdrop-blur-xl">
+        <section className="app-nav mt-5 p-2">
           <div className="flex min-w-max items-center gap-2">
-            <div className="hidden pr-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 lg:block">
+            <div className="hidden pr-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--color-text-muted)] lg:block">
               Navigation
             </div>
             <TabButtons activeTab={activeTab} onSelect={setActiveTab} />
@@ -2211,15 +2219,6 @@ export function FinanceApp() {
           </aside>
         </div>
 
-        <section className="mt-5 flex items-center gap-2 overflow-x-auto pb-1 lg:hidden">
-          <TabButtons activeTab={activeTab} onSelect={setActiveTab} />
-        </section>
-
-        <footer className="pointer-events-none fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-md justify-center px-4 pb-5 lg:hidden">
-          <div className="pointer-events-auto flex w-full items-center justify-between rounded-full border border-white/10 bg-slate-950/80 px-4 py-3 shadow-[0_18px_50px_rgba(2,6,23,0.45)] backdrop-blur-xl">
-            <TabButtons compact activeTab={activeTab} onSelect={setActiveTab} />
-          </div>
-        </footer>
       </div>
     </main>
   );
@@ -2255,16 +2254,16 @@ function AuthScreen({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,#16314f_0%,#0b1830_32%,#060d18_72%,#04070d_100%)] px-4 py-8 text-slate-100 sm:px-6">
+    <main className="app-auth-shell px-4 py-8 sm:px-6">
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="rounded-[36px] border border-white/10 bg-white/8 p-6 shadow-[0_30px_120px_rgba(2,6,23,0.45)] backdrop-blur-xl sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-200/72">
+        <div className="app-hero p-6 sm:p-8">
+          <p className="app-section-eyebrow text-xs font-semibold uppercase tracking-[0.28em]">
             Shared Finance Tracker
           </p>
-          <h1 className="mt-4 max-w-xl text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl">
+          <h1 className="mt-4 max-w-xl text-4xl font-semibold tracking-[-0.05em] text-foreground sm:text-5xl">
             Shared personal finance, without the clutter.
           </h1>
-          <p className="mt-4 max-w-xl text-base leading-7 text-slate-300">
+          <p className="mt-4 max-w-xl text-base leading-7 text-[var(--color-text-secondary)]">
             Sign in to a clean finance space for budgets, categories, transactions, and savings goals.
             The first time you join, the app will create your workspace automatically.
           </p>
@@ -2275,13 +2274,13 @@ function AuthScreen({
           </div>
         </div>
 
-        <div className="rounded-[36px] border border-white/10 bg-slate-950/55 p-6 shadow-[0_30px_120px_rgba(2,6,23,0.42)] backdrop-blur-xl sm:p-8">
+        <div className="app-card p-6 sm:p-8">
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => onModeChange("sign-in")}
-              className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                authMode === "sign-in" ? "bg-white text-slate-950" : "bg-white/8 text-slate-300"
+              className={`app-button rounded-full px-4 py-2 text-sm ${
+                authMode === "sign-in" ? "app-button--primary" : "app-button--ghost"
               }`}
             >
               Sign in
@@ -2289,8 +2288,8 @@ function AuthScreen({
             <button
               type="button"
               onClick={() => onModeChange("sign-up")}
-              className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                authMode === "sign-up" ? "bg-white text-slate-950" : "bg-white/8 text-slate-300"
+              className={`app-button rounded-full px-4 py-2 text-sm ${
+                authMode === "sign-up" ? "app-button--primary" : "app-button--ghost"
               }`}
             >
               Sign up
@@ -2305,7 +2304,7 @@ function AuthScreen({
                   onChange={(event) =>
                     onChange((current) => ({ ...current, displayName: event.target.value }))
                   }
-                  className="w-full rounded-[22px] border border-white/10 bg-white/6 px-4 py-3 text-white outline-none"
+                  className="app-input"
                   placeholder="Your name"
                 />
               </Field>
@@ -2317,7 +2316,7 @@ function AuthScreen({
                 onChange={(event) =>
                   onChange((current) => ({ ...current, email: event.target.value }))
                 }
-                className="w-full rounded-[22px] border border-white/10 bg-white/6 px-4 py-3 text-white outline-none"
+                className="app-input"
                 placeholder="you@example.com"
                 type="email"
               />
@@ -2329,7 +2328,7 @@ function AuthScreen({
                 onChange={(event) =>
                   onChange((current) => ({ ...current, password: event.target.value }))
                 }
-                className="w-full rounded-[22px] border border-white/10 bg-white/6 px-4 py-3 text-white outline-none"
+                className="app-input"
                 placeholder="Your password"
                 type="password"
               />
@@ -2338,7 +2337,7 @@ function AuthScreen({
             <button
               type="submit"
               disabled={authBusy}
-              className="w-full rounded-[22px] bg-white px-4 py-3 font-semibold text-slate-950 disabled:opacity-60"
+              className="app-button app-button--primary w-full"
             >
               {authBusy ? "Working..." : authMode === "sign-in" ? "Sign in" : "Create account"}
             </button>
@@ -2347,14 +2346,14 @@ function AuthScreen({
               type="button"
               disabled={authBusy || !authForm.email}
               onClick={onMagicLink}
-              className="w-full rounded-[22px] border border-white/10 bg-white/6 px-4 py-3 font-semibold text-slate-100 disabled:opacity-60"
+              className="app-button app-button--ghost w-full"
             >
               Send magic link
             </button>
           </form>
 
           {authMessage ? (
-            <div className="mt-4 rounded-[22px] border border-cyan-300/16 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-100">
+            <div className="app-feedback app-feedback--info mt-4">
               {authMessage}
             </div>
           ) : null}
@@ -2366,9 +2365,31 @@ function AuthScreen({
 
 function LoadingScreen({ label }: { label: string }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#16314f_0%,#0b1830_32%,#060d18_72%,#04070d_100%)] px-4 text-slate-100">
-      <div className="rounded-[28px] border border-white/10 bg-white/8 px-6 py-5 text-sm text-slate-300 shadow-[0_30px_120px_rgba(2,6,23,0.45)] backdrop-blur-xl">
+    <main className="app-auth-shell flex items-center justify-center px-4">
+      <div className="app-panel px-6 py-5 text-sm text-[var(--color-text-secondary)] shadow-[0_30px_120px_rgba(2,6,23,0.45)] backdrop-blur-xl">
         {label}
+      </div>
+    </main>
+  );
+}
+
+function ConfigScreen() {
+  return (
+    <main className="app-auth-shell flex items-center justify-center px-4">
+      <div className="app-card w-full max-w-2xl p-6 sm:p-8">
+        <p className="app-section-eyebrow text-xs font-semibold uppercase tracking-[0.28em]">
+          Configuration required
+        </p>
+        <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-foreground sm:text-4xl">
+          Add your Supabase public keys to run the finance tracker.
+        </h1>
+        <p className="mt-4 max-w-xl text-sm leading-7 text-[var(--color-text-secondary)] sm:text-base">
+          The UI now builds cleanly without crashing, but sign-in and shared finance data need
+          `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` before the app can connect.
+        </p>
+        <div className="app-feedback app-feedback--info mt-6">
+          Set those environment variables in your local app config, then reload the page.
+        </div>
       </div>
     </main>
   );
@@ -2383,10 +2404,8 @@ function ToastBanner({
 }) {
   return (
     <div
-      className={`mb-4 animate-[toast-in_200ms_ease-out] rounded-[24px] border px-4 py-3 text-sm shadow-[0_20px_60px_rgba(2,6,23,0.35)] backdrop-blur-xl ${
-        kind === "success"
-          ? "border-emerald-300/20 bg-emerald-300/12 text-emerald-50"
-          : "border-rose-300/20 bg-rose-300/12 text-rose-50"
+      className={`app-toast app-feedback ${
+        kind === "success" ? "app-feedback--success" : "app-feedback--error"
       }`}
     >
       {message}
@@ -2402,9 +2421,9 @@ function EmptyPanel({
   description: string;
 }) {
   return (
-    <div className="rounded-[22px] border border-dashed border-white/12 bg-white/4 px-4 py-4">
-      <div className="text-sm font-semibold text-white">{title}</div>
-      <div className="mt-1 text-sm leading-6 text-slate-400">{description}</div>
+    <div className="app-empty px-4 py-4">
+      <div className="text-sm font-semibold text-foreground">{title}</div>
+      <div className="app-section-description mt-1 text-sm leading-6">{description}</div>
     </div>
   );
 }
@@ -2425,14 +2444,14 @@ function TabButtons({
           key={tab.id}
           type="button"
           onClick={() => onSelect(tab.id)}
-          className={`rounded-full font-medium transition ${
-            compact ? "px-3 py-2 text-xs font-semibold" : "px-4 py-2.5 text-sm"
+          className={`app-tab ${
+            compact ? "app-tab--compact px-3 py-2 text-xs font-semibold" : "px-4 py-2.5 text-sm"
           } ${
             activeTab === tab.id
-              ? "bg-white text-slate-950 shadow-lg shadow-black/30"
+              ? "app-tab--active"
               : tab.id === "add"
-                ? "bg-cyan-300/12 text-cyan-100 hover:bg-cyan-300/20"
-                : "bg-white/8 text-slate-300 hover:bg-white/12"
+                ? "app-tab--add"
+                : ""
           }`}
         >
           {tab.label}
@@ -2444,7 +2463,7 @@ function TabButtons({
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <section className="rounded-[30px] border border-white/10 bg-[rgba(18,27,44,0.8)] p-5 shadow-[0_24px_80px_rgba(2,6,23,0.24)] backdrop-blur-xl sm:p-6">
+    <section className="app-card p-5 sm:p-6">
       {children}
     </section>
   );
@@ -2461,9 +2480,9 @@ function SectionHeader({
 }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-200/66">{eyebrow}</p>
-      <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-white">{title}</h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">{description}</p>
+      <p className="app-section-eyebrow text-xs font-semibold uppercase tracking-[0.28em]">{eyebrow}</p>
+      <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-foreground">{title}</h2>
+      <p className="app-section-description mt-2 max-w-2xl text-sm leading-6">{description}</p>
     </div>
   );
 }
@@ -2479,13 +2498,13 @@ function MetricCard({
 }) {
   const toneClass =
     tone === "income"
-      ? "border border-emerald-300/14 bg-emerald-300/10 text-emerald-50"
+      ? "app-metric-card--income"
       : tone === "expense"
-        ? "border border-rose-300/14 bg-rose-300/10 text-rose-50"
-        : "border border-cyan-300/14 bg-cyan-300/10 text-cyan-50";
+        ? "app-metric-card--expense"
+        : "app-metric-card--neutral";
 
   return (
-    <div className={`rounded-[26px] px-4 py-4 shadow-inner shadow-black/8 ${toneClass}`}>
+    <div className={`app-metric-card px-4 py-4 ${toneClass}`}>
       <p className="text-xs font-semibold uppercase tracking-[0.18em] opacity-70">{label}</p>
       <p className="mt-2 text-lg font-semibold tracking-[-0.03em]">{value}</p>
     </div>
@@ -2502,8 +2521,8 @@ function SummaryRow({
   accent: string;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-[24px] border border-white/8 bg-white/6 px-4 py-3">
-      <span className="text-sm text-slate-400">{label}</span>
+    <div className="app-row flex items-center justify-between px-4 py-3">
+      <span className="text-sm text-[var(--color-text-tertiary)]">{label}</span>
       <span className={`text-sm font-semibold ${accent}`}>{value}</span>
     </div>
   );
@@ -2525,17 +2544,17 @@ function TransactionRow({
   const isIncome = amount.startsWith("+");
 
   return (
-    <div className="flex items-center justify-between rounded-[24px] border border-white/8 bg-white/6 px-4 py-3">
+    <div className="app-row flex items-center justify-between px-4 py-3">
       <div className="flex items-center gap-3">
         <span className="h-11 w-11 rounded-[20px]" style={{ backgroundColor: `${color}25` }} />
         <div>
-          <div className="text-sm font-semibold text-white">{title}</div>
+          <div className="text-sm font-semibold text-foreground">{title}</div>
           <div className="text-xs text-slate-400">
             {category} · {subtitle}
           </div>
         </div>
       </div>
-      <span className={`text-sm font-semibold ${isIncome ? "text-emerald-300" : "text-white"}`}>
+      <span className={`text-sm font-semibold ${isIncome ? "app-amount-income" : "app-amount-neutral"}`}>
         {amount}
       </span>
     </div>
@@ -2564,29 +2583,29 @@ function BudgetRow({
     remaining >= 0 ? `${formatCurrency(remaining)} left` : `${formatCurrency(Math.abs(remaining))} over`;
 
   return (
-    <div className="rounded-[28px] border border-white/8 bg-white/6 px-4 py-4">
+    <div className="app-row rounded-[28px] px-4 py-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
-          <div className="text-sm font-semibold text-white">{name}</div>
+          <div className="text-sm font-semibold text-foreground">{name}</div>
         </div>
-        <div className="text-sm font-semibold text-white">{formatCurrency(limit)}</div>
+        <div className="text-sm font-semibold text-foreground">{formatCurrency(limit)}</div>
       </div>
-      <div className="mt-3 h-2.5 rounded-full bg-white/10">
+      <div className="app-progress mt-3 h-2.5">
         <div
           className="h-full rounded-full"
           style={{ width: `${Math.max(progress * 100, 6)}%`, backgroundColor: color }}
         />
       </div>
       <div className="mt-3 flex items-center justify-between text-sm">
-        <span className="text-slate-400">{formatCurrency(spent)} spent</span>
-        <span className={remaining >= 0 ? "text-slate-200" : "text-rose-300"}>{remainingLabel}</span>
+        <span className="text-[var(--color-text-tertiary)]">{formatCurrency(spent)} spent</span>
+        <span className={remaining >= 0 ? "text-[var(--color-text-secondary)]" : "app-amount-expense"}>{remainingLabel}</span>
       </div>
       {onDelete ? (
         <button
           type="button"
           onClick={() => void onDelete(id)}
-          className="mt-4 rounded-[18px] border border-white/8 bg-white/6 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-rose-300/30 hover:text-rose-200"
+          className="app-button app-button--danger mt-4 rounded-[18px] px-3 py-2 text-xs"
         >
           Remove budget
         </button>
@@ -2604,7 +2623,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-medium text-slate-300">{label}</span>
+      <span className="app-field-label mb-2 block text-sm font-medium">{label}</span>
       {children}
     </label>
   );
@@ -2623,27 +2642,27 @@ function SavingsGoalRow({
       : null;
 
   return (
-    <div className="rounded-[28px] border border-white/8 bg-white/6 px-4 py-4">
+    <div className="app-row rounded-[28px] px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-white">{goal.name}</div>
-          <p className="mt-1 text-sm leading-6 text-slate-400">{goal.note}</p>
+          <div className="text-sm font-semibold text-foreground">{goal.name}</div>
+          <p className="mt-1 text-sm leading-6 text-[var(--color-text-tertiary)]">{goal.note}</p>
         </div>
-        <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-xs font-semibold text-slate-200">
+        <span className="app-pill px-3 py-1 text-xs font-semibold">
           {goal.targetAmount ? "Goal" : "Open-ended"}
         </span>
       </div>
 
       <div className="mt-4 flex items-end justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Current</div>
-          <div className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-white">
+          <div className="text-xs uppercase tracking-[0.18em] text-[var(--color-text-muted)]">Current</div>
+          <div className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-foreground">
             {formatCurrency(goal.currentAmount)}
           </div>
         </div>
         <div className="text-right">
-          <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Monthly</div>
-          <div className="mt-1 text-sm font-semibold text-emerald-300">
+          <div className="text-xs uppercase tracking-[0.18em] text-[var(--color-text-muted)]">Monthly</div>
+          <div className="app-amount-income mt-1 text-sm font-semibold">
             +{formatCurrency(goal.monthlyContribution)}
           </div>
         </div>
@@ -2651,19 +2670,19 @@ function SavingsGoalRow({
 
       {goal.targetAmount ? (
         <>
-          <div className="mt-4 h-2.5 rounded-full bg-white/10">
+          <div className="app-progress mt-4 h-2.5">
             <div
-              className="h-full rounded-full bg-cyan-300"
+              className="h-full rounded-full bg-[var(--data-viz-budget)]"
               style={{ width: `${Math.max((progress ?? 0) * 100, 8)}%` }}
             />
           </div>
           <div className="mt-3 flex items-center justify-between text-sm">
-            <span className="text-slate-400">{formatCurrency(goal.targetAmount)} target</span>
-            <span className="text-cyan-200">{Math.round((progress ?? 0) * 100)}%</span>
+            <span className="text-[var(--color-text-tertiary)]">{formatCurrency(goal.targetAmount)} target</span>
+            <span className="text-[var(--color-accent-200)]">{Math.round((progress ?? 0) * 100)}%</span>
           </div>
         </>
       ) : (
-        <div className="mt-4 rounded-[22px] border border-white/8 bg-slate-950/35 px-4 py-3 text-sm text-slate-300">
+        <div className="app-panel mt-4 px-4 py-3 text-sm text-[var(--color-text-secondary)]">
           No fixed target. Use this as a flexible savings pot and track what goes in over time.
         </div>
       )}
@@ -2671,7 +2690,7 @@ function SavingsGoalRow({
         <button
           type="button"
           onClick={() => void onDelete(goal.id)}
-          className="mt-4 rounded-[18px] border border-white/8 bg-white/6 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-rose-300/30 hover:text-rose-200"
+          className="app-button app-button--danger mt-4 rounded-[18px] px-3 py-2 text-xs"
         >
           Remove pot
         </button>
@@ -2694,15 +2713,15 @@ function SalaryRow({
   postgraduateLoan: boolean;
 }) {
   return (
-    <div className="rounded-[28px] border border-white/8 bg-white/6 px-4 py-4">
+    <div className="app-row rounded-[28px] px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-white">{name}</div>
-          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
+          <div className="text-sm font-semibold text-foreground">{name}</div>
+          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
             {taxRegion === "scotland" ? "Scottish tax" : "England/Wales/NI tax"}
           </div>
         </div>
-        <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-xs font-semibold text-slate-200">
+        <span className="app-pill px-3 py-1 text-xs font-semibold">
           {studentLoanPlan === "none" ? "No student loan" : studentLoanPlan.toUpperCase()}
           {postgraduateLoan ? " + PGL" : ""}
         </span>
