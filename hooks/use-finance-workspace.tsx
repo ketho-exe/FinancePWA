@@ -17,6 +17,7 @@ import {
   defaultCategoryPalette,
   hasSupabase,
   loadWorkspaceBundle,
+  syncWorkspaceDerivedData,
   starterCategories,
   subscribeToWorkspace,
   supabase,
@@ -289,6 +290,15 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     if (!session?.user) return;
     const bundle = await loadWorkspaceBundle(session.user);
     await applyBundle(bundle);
+    void syncWorkspaceDerivedData(session.user, bundle)
+      .then((nextBundle) => {
+        if (nextBundle) {
+          void applyBundle(nextBundle);
+        }
+      })
+      .catch(() => {
+        // Derived sync should not block rendering or break the main workspace load.
+      });
   }
 
   async function logTransactionHistory(action: "created" | "updated" | "deleted", transaction: Transaction) {
@@ -395,6 +405,14 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         if (!active) return;
         await applyBundle(bundle);
         lastLoadedUserIdRef.current = sessionUserId;
+        void syncWorkspaceDerivedData(currentUser, bundle)
+          .then((nextBundle) => {
+            if (!active || !nextBundle) return;
+            void applyBundle(nextBundle);
+          })
+          .catch(() => {
+            // Keep boot resilient if optional background sync fails in production.
+          });
       } catch (error) {
         if (!active) return;
         const message = error instanceof Error ? error.message : "Unable to load workspace.";

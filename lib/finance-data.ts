@@ -186,6 +186,11 @@ type SupabaseLikeError = {
   hint?: string | null;
 };
 
+type SupabaseQueryResult<T> = {
+  data: T[] | null;
+  error: SupabaseLikeError | null;
+};
+
 function isMissingResourceError(error: SupabaseLikeError | null | undefined) {
   if (!error) return false;
 
@@ -239,6 +244,38 @@ async function fetchTransactionsForWorkspace(workspaceId: string) {
       split_amount: null,
     })),
   };
+}
+
+function emptyResult<T>(): SupabaseQueryResult<T> {
+  return {
+    data: [],
+    error: null,
+  };
+}
+
+async function fetchSavingsGoalEntriesForWorkspace(savingsGoalIds: string[]) {
+  if (savingsGoalIds.length === 0) {
+    return emptyResult<DbSavingsGoalEntryRow>();
+  }
+
+  return supabase
+    .from("savings_goal_entries")
+    .select("id, savings_goal_id, amount_delta, entry_date, note, created_by")
+    .in("savings_goal_id", savingsGoalIds)
+    .order("entry_date", { ascending: false })
+    .returns<DbSavingsGoalEntryRow[]>();
+}
+
+async function fetchTransactionTagMapForWorkspace(transactionIds: string[]) {
+  if (transactionIds.length === 0) {
+    return emptyResult<DbTransactionTagMapRow>();
+  }
+
+  return supabase
+    .from("transaction_tag_map")
+    .select("transaction_id, tag_id")
+    .in("transaction_id", transactionIds)
+    .returns<DbTransactionTagMapRow[]>();
 }
 
 function mapProfile(row: DbProfileRow): Profile {
@@ -585,7 +622,7 @@ export type WorkspaceBundle = {
   transactionHistory: TransactionHistoryEntry[];
 };
 
-export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
+async function readWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
   const profile = await ensureProfile(user);
   const workspaceId = await ensureWorkspace(user.id);
   const transactionsPromise = fetchTransactionsForWorkspace(workspaceId);
@@ -598,11 +635,9 @@ export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> 
     budgetResult,
     savingsResult,
     salaryResult,
-    savingsEntryResult,
     recurringResult,
     wishlistResult,
     tagResult,
-    tagMapResult,
     historyResult,
   ] = await Promise.all([
     supabase.from("workspaces").select("id, name").eq("id", workspaceId).single<DbWorkspaceRow>(),
@@ -635,11 +670,6 @@ export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> 
       .eq("workspace_id", workspaceId)
       .returns<DbSalaryProfileRow[]>(),
     supabase
-      .from("savings_goal_entries")
-      .select("id, savings_goal_id, amount_delta, entry_date, note, created_by")
-      .order("entry_date", { ascending: false })
-      .returns<DbSavingsGoalEntryRow[]>(),
-    supabase
       .from("recurring_transactions")
       .select("id, workspace_id, name, amount, type, category_id, frequency, interval_value, start_date, end_date, next_run_date, created_by, mode, note")
       .eq("workspace_id", workspaceId)
@@ -658,10 +688,6 @@ export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> 
       .order("name", { ascending: true })
       .returns<DbTransactionTagRow[]>(),
     supabase
-      .from("transaction_tag_map")
-      .select("transaction_id, tag_id")
-      .returns<DbTransactionTagMapRow[]>(),
-    supabase
       .from("transaction_history")
       .select("id, transaction_id, workspace_id, action, snapshot, changed_by, created_at")
       .eq("workspace_id", workspaceId)
@@ -677,11 +703,9 @@ export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> 
   if (budgetResult.error) throw budgetResult.error;
   if (savingsResult.error) throw savingsResult.error;
   if (salaryResult.error && !isMissingResourceError(salaryResult.error)) throw salaryResult.error;
-  if (savingsEntryResult.error && !isMissingResourceError(savingsEntryResult.error)) throw savingsEntryResult.error;
   if (recurringResult.error && !isMissingResourceError(recurringResult.error)) throw recurringResult.error;
   if (wishlistResult.error && !isMissingResourceError(wishlistResult.error)) throw wishlistResult.error;
   if (tagResult.error && !isMissingResourceError(tagResult.error)) throw tagResult.error;
-  if (tagMapResult.error && !isMissingResourceError(tagMapResult.error)) throw tagMapResult.error;
   if (historyResult.error && !isMissingResourceError(historyResult.error)) throw historyResult.error;
 
   const memberIds = (memberResult.data ?? []).map((row) => row.user_id);
@@ -695,31 +719,28 @@ export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> 
   const categories = (categoryResult.data ?? []).map(mapCategory);
   const transactions = (transactionResult.data ?? []).map(mapTransaction);
   const salaryProfiles = (salaryResult.data ?? []).map(mapSalaryProfile);
+  const savingsGoals = (savingsResult.data ?? []).map(mapSavingsGoal);
   const recurringTransactions = (recurringResult.data ?? []).map(mapRecurringTransaction);
+  const savingsEntryResult = await fetchSavingsGoalEntriesForWorkspace(
+    savingsGoals.map((goal) => goal.id),
+  );
+  if (savingsEntryResult.error && !isMissingResourceError(savingsEntryResult.error)) {
+    throw savingsEntryResult.error;
+  }
 
-  await ensureSalaryTransactions({
-    workspaceId,
-    categories,
-    transactions,
-    salaryProfiles,
-  });
-  await ensureRecurringTransactions({
-    workspaceId,
-    transactions,
-    recurringTransactions,
-  });
-
-  const refreshedTransactionsResult = await fetchTransactionsForWorkspace(workspaceId);
-  if (refreshedTransactionsResult.error) throw refreshedTransactionsResult.error;
+  const tagMapResult = await fetchTransactionTagMapForWorkspace(
+    transactions.map((transaction) => transaction.id),
+  );
+  if (tagMapResult.error && !isMissingResourceError(tagMapResult.error)) throw tagMapResult.error;
 
   return {
     profile,
     workspace: workspaceResult.data,
     members: (profileRows ?? []).map(mapProfile),
     categories,
-    transactions: (refreshedTransactionsResult.data ?? []).map(mapTransaction),
+    transactions,
     budgets: (budgetResult.data ?? []).map(mapBudget),
-    savingsGoals: (savingsResult.data ?? []).map(mapSavingsGoal),
+    savingsGoals,
     salaryProfiles,
     savingsGoalEntries: (savingsEntryResult.data ?? []).map(mapSavingsGoalEntry),
     recurringTransactions,
@@ -728,6 +749,32 @@ export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> 
     transactionTagMaps: (tagMapResult.data ?? []).map(mapTransactionTagMap),
     transactionHistory: (historyResult.data ?? []).map(mapTransactionHistory),
   };
+}
+
+export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
+  return readWorkspaceBundle(user);
+}
+
+export async function syncWorkspaceDerivedData(user: User, bundle: WorkspaceBundle): Promise<WorkspaceBundle | null> {
+  await ensureSalaryTransactions({
+    workspaceId: bundle.workspace.id,
+    categories: bundle.categories,
+    transactions: bundle.transactions,
+    salaryProfiles: bundle.salaryProfiles,
+  });
+  await ensureRecurringTransactions({
+    workspaceId: bundle.workspace.id,
+    transactions: bundle.transactions,
+    recurringTransactions: bundle.recurringTransactions,
+  });
+
+  const refreshedBundle = await readWorkspaceBundle(user);
+
+  const hasChanged =
+    refreshedBundle.transactions.length !== bundle.transactions.length ||
+    refreshedBundle.recurringTransactions.some((item, index) => item.nextRunDate !== bundle.recurringTransactions[index]?.nextRunDate);
+
+  return hasChanged ? refreshedBundle : null;
 }
 
 export function subscribeToWorkspace(
