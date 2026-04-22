@@ -23,7 +23,9 @@ function FinanceAppContent({ children }: { children: ReactNode }) {
     dataError,
     handleAuthSubmit,
     handleMagicLink,
+    handleSignOut,
     hasSupabase,
+    refreshWorkspaceData,
     session,
     setAuthForm,
     setAuthMode,
@@ -58,6 +60,16 @@ function FinanceAppContent({ children }: { children: ReactNode }) {
 
   if (dataLoading && !workspace) {
     return <LoadingScreen label="Loading your finance space..." />;
+  }
+
+  if (dataError && !workspace) {
+    return (
+      <DataErrorScreen
+        message={dataError}
+        onRetry={refreshWorkspaceData}
+        onSignOut={handleSignOut}
+      />
+    );
   }
 
   return (
@@ -138,6 +150,38 @@ function ConfigScreen() {
         <p className="mt-3 text-sm text-slate-400">
           Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, then reload the app.
         </p>
+      </div>
+    </div>
+  );
+}
+
+function DataErrorScreen({
+  message,
+  onRetry,
+  onSignOut,
+}: {
+  message: string;
+  onRetry: () => Promise<void>;
+  onSignOut: () => Promise<void>;
+}) {
+  return (
+    <div className="app-page-shell flex min-h-screen items-center justify-center px-6">
+      <div className="app-card max-w-2xl px-8 py-10">
+        <p className="app-pill app-pill--accent inline-flex px-3 py-1 text-xs uppercase tracking-[0.2em]">
+          Workspace Load Failed
+        </p>
+        <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white">
+          The app could not finish loading your finance workspace.
+        </h1>
+        <p className="mt-3 text-sm text-slate-400">{message}</p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button type="button" className="app-button app-button--primary" onClick={() => void onRetry()}>
+            Retry loading
+          </button>
+          <button type="button" className="app-button app-button--ghost" onClick={() => void onSignOut()}>
+            Sign out
+          </button>
+        </div>
       </div>
     </div>
   );

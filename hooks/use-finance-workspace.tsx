@@ -58,6 +58,26 @@ type WorkspaceSummary = {
 };
 
 type AuthMode = "sign-in" | "sign-up";
+const WORKSPACE_LOAD_TIMEOUT_MS = 15000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)} seconds.`));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
 
 type SaveTransactionInput = {
   id?: string;
@@ -306,12 +326,19 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setDataError("");
 
       try {
-        const bundle = await loadWorkspaceBundle(currentUser);
+        const bundle = await withTimeout(
+          loadWorkspaceBundle(currentUser),
+          WORKSPACE_LOAD_TIMEOUT_MS,
+          "Loading your finance workspace",
+        );
         if (!active) return;
         await applyBundle(bundle);
       } catch (error) {
         if (!active) return;
-        setDataError(error instanceof Error ? error.message : "Unable to load workspace.");
+        const message = error instanceof Error ? error.message : "Unable to load workspace.";
+        setDataError(
+          `${message} If this keeps happening, check Supabase auth, RLS policies, and browser network requests.`,
+        );
       } finally {
         if (active) setDataLoading(false);
       }
