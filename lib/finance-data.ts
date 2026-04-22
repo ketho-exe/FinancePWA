@@ -179,6 +179,68 @@ type DbTransactionHistoryRow = {
   created_at: string;
 };
 
+type SupabaseLikeError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function isMissingResourceError(error: SupabaseLikeError | null | undefined) {
+  if (!error) return false;
+
+  const code = error.code ?? "";
+  const message = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`.toLowerCase();
+
+  return (
+    code === "42P01" ||
+    code === "42703" ||
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    message.includes("relation") && message.includes("does not exist") ||
+    message.includes("column") && message.includes("does not exist") ||
+    message.includes("could not find the table") ||
+    message.includes("could not find the relation")
+  );
+}
+
+async function fetchTransactionsForWorkspace(workspaceId: string) {
+  const fullResult = await supabase
+    .from("transactions")
+    .select("id, workspace_id, category_id, amount, description, transaction_date, created_by, recurring_transaction_id, generated_source, is_prediction, split_mode, split_participants, split_amount")
+    .eq("workspace_id", workspaceId)
+    .order("transaction_date", { ascending: false })
+    .returns<DbTransactionRow[]>();
+
+  if (!isMissingResourceError(fullResult.error)) {
+    return fullResult;
+  }
+
+  const fallbackResult = await supabase
+    .from("transactions")
+    .select("id, workspace_id, category_id, amount, description, transaction_date, created_by")
+    .eq("workspace_id", workspaceId)
+    .order("transaction_date", { ascending: false })
+    .returns<Array<Omit<DbTransactionRow, "recurring_transaction_id" | "generated_source" | "is_prediction" | "split_mode" | "split_participants" | "split_amount">>>();
+
+  if (fallbackResult.error) {
+    return { ...fallbackResult, data: null };
+  }
+
+  return {
+    error: null,
+    data: (fallbackResult.data ?? []).map((row) => ({
+      ...row,
+      recurring_transaction_id: null,
+      generated_source: null,
+      is_prediction: false,
+      split_mode: "none" as SplitMode,
+      split_participants: 1,
+      split_amount: null,
+    })),
+  };
+}
+
 function mapProfile(row: DbProfileRow): Profile {
   return {
     id: row.id,
@@ -526,6 +588,7 @@ export type WorkspaceBundle = {
 export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
   const profile = await ensureProfile(user);
   const workspaceId = await ensureWorkspace(user.id);
+  const transactionsPromise = fetchTransactionsForWorkspace(workspaceId);
 
   const [
     workspaceResult,
@@ -554,12 +617,7 @@ export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> 
       .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: true })
       .returns<DbCategoryRow[]>(),
-    supabase
-      .from("transactions")
-      .select("id, workspace_id, category_id, amount, description, transaction_date, created_by, recurring_transaction_id, generated_source, is_prediction, split_mode, split_participants, split_amount")
-      .eq("workspace_id", workspaceId)
-      .order("transaction_date", { ascending: false })
-      .returns<DbTransactionRow[]>(),
+    transactionsPromise,
     supabase
       .from("budgets")
       .select("id, workspace_id, category_id, month, amount")
@@ -618,13 +676,13 @@ export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> 
   if (transactionResult.error) throw transactionResult.error;
   if (budgetResult.error) throw budgetResult.error;
   if (savingsResult.error) throw savingsResult.error;
-  if (salaryResult.error && salaryResult.error.code !== "42P01") throw salaryResult.error;
-  if (savingsEntryResult.error && savingsEntryResult.error.code !== "42P01") throw savingsEntryResult.error;
-  if (recurringResult.error && recurringResult.error.code !== "42P01") throw recurringResult.error;
-  if (wishlistResult.error && wishlistResult.error.code !== "42P01") throw wishlistResult.error;
-  if (tagResult.error && tagResult.error.code !== "42P01") throw tagResult.error;
-  if (tagMapResult.error && tagMapResult.error.code !== "42P01") throw tagMapResult.error;
-  if (historyResult.error && historyResult.error.code !== "42P01") throw historyResult.error;
+  if (salaryResult.error && !isMissingResourceError(salaryResult.error)) throw salaryResult.error;
+  if (savingsEntryResult.error && !isMissingResourceError(savingsEntryResult.error)) throw savingsEntryResult.error;
+  if (recurringResult.error && !isMissingResourceError(recurringResult.error)) throw recurringResult.error;
+  if (wishlistResult.error && !isMissingResourceError(wishlistResult.error)) throw wishlistResult.error;
+  if (tagResult.error && !isMissingResourceError(tagResult.error)) throw tagResult.error;
+  if (tagMapResult.error && !isMissingResourceError(tagMapResult.error)) throw tagMapResult.error;
+  if (historyResult.error && !isMissingResourceError(historyResult.error)) throw historyResult.error;
 
   const memberIds = (memberResult.data ?? []).map((row) => row.user_id);
   const { data: profileRows, error: profileError } = await supabase
@@ -651,20 +709,15 @@ export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> 
     recurringTransactions,
   });
 
-  const { data: refreshedTransactions, error: refreshedTransactionsError } = await supabase
-    .from("transactions")
-    .select("id, workspace_id, category_id, amount, description, transaction_date, created_by, recurring_transaction_id, generated_source, is_prediction, split_mode, split_participants, split_amount")
-    .eq("workspace_id", workspaceId)
-    .order("transaction_date", { ascending: false })
-    .returns<DbTransactionRow[]>();
-  if (refreshedTransactionsError) throw refreshedTransactionsError;
+  const refreshedTransactionsResult = await fetchTransactionsForWorkspace(workspaceId);
+  if (refreshedTransactionsResult.error) throw refreshedTransactionsResult.error;
 
   return {
     profile,
     workspace: workspaceResult.data,
     members: (profileRows ?? []).map(mapProfile),
     categories,
-    transactions: (refreshedTransactions ?? []).map(mapTransaction),
+    transactions: (refreshedTransactionsResult.data ?? []).map(mapTransaction),
     budgets: (budgetResult.data ?? []).map(mapBudget),
     savingsGoals: (savingsResult.data ?? []).map(mapSavingsGoal),
     salaryProfiles,
