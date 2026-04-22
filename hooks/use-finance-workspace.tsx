@@ -224,7 +224,9 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   const [transactionHistory, setTransactionHistory] = useState<TransactionHistoryEntry[]>([]);
   const [deletedTransactionPendingUndo, setDeletedTransactionPendingUndo] = useState<Transaction | null>(null);
   const deleteUndoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLoadedUserIdRef = useRef<string | null>(null);
   const workspaceId = workspace?.id ?? null;
+  const sessionUserId = session?.user?.id ?? null;
 
   const currentMonth = getCurrentMonth();
   const expenseCategories = categories.filter((item) => item.type === "expense");
@@ -283,16 +285,34 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
-      setSession(data.session);
+      setSession((current) => {
+        if (
+          current?.user?.id === data.session?.user?.id &&
+          current?.access_token === data.session?.access_token
+        ) {
+          return current;
+        }
+        return data.session;
+      });
       setAuthLoading(false);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return;
-      setSession(nextSession);
-      if (!nextSession) {
+      setSession((current) => {
+        if (
+          current?.user?.id === nextSession?.user?.id &&
+          current?.access_token === nextSession?.access_token
+        ) {
+          return current;
+        }
+        return nextSession;
+      });
+
+      if (!nextSession && event === "SIGNED_OUT") {
+        lastLoadedUserIdRef.current = null;
         setWorkspace(null);
         setMembers([]);
         setCategories([]);
@@ -317,7 +337,8 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   }, []);
 
   useEffect(() => {
-    if (!hasSupabase || !session?.user) return;
+    if (!hasSupabase || !sessionUserId || !session?.user) return;
+    if (lastLoadedUserIdRef.current === sessionUserId && workspace) return;
     let active = true;
     const currentUser = session.user;
 
@@ -333,6 +354,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         );
         if (!active) return;
         await applyBundle(bundle);
+        lastLoadedUserIdRef.current = sessionUserId;
       } catch (error) {
         if (!active) return;
         const message = error instanceof Error ? error.message : "Unable to load workspace.";
@@ -348,7 +370,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [sessionUserId, workspace, session?.user]);
 
   const handleWorkspaceRealtime = useEffectEvent(() => {
     void refreshWorkspaceData();
