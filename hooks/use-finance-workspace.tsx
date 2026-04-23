@@ -401,10 +401,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
         setLoadingDiagnostics(data.session ? "Session restored" : "No active session");
         setSession((current) => {
-          if (
-            current?.user?.id === data.session?.user?.id &&
-            current?.access_token === data.session?.access_token
-          ) {
+          if (current?.user?.id === data.session?.user?.id) {
             return current;
           }
           return data.session;
@@ -429,10 +426,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         nextSession ? `Auth event: ${event}` : `Auth event: ${event} (signed out)`,
       );
       setSession((current) => {
-        if (
-          current?.user?.id === nextSession?.user?.id &&
-          current?.access_token === nextSession?.access_token
-        ) {
+        if (current?.user?.id === nextSession?.user?.id) {
           return current;
         }
         return nextSession;
