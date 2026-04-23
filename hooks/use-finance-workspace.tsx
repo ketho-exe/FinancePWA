@@ -669,6 +669,11 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
   async function saveTransaction(input: SaveTransactionInput) {
     if (!workspace || !session?.user) return;
+    const categoryExists = categories.some((category) => category.id === input.categoryId);
+    if (!input.categoryId || !categoryExists) {
+      setToast({ kind: "error", message: "Pick a valid category before saving the transaction." });
+      return;
+    }
 
     const payload = {
       workspace_id: workspace.id,
@@ -756,17 +761,43 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
   async function saveCategory(input: { name: string; type: CategoryType }) {
     if (!workspace || !session?.user) return;
-    const { error } = await supabase.from("categories").insert({
-      workspace_id: workspace.id,
-      name: input.name.trim(),
-      type: input.type,
-      color: defaultCategoryPalette[categories.length % defaultCategoryPalette.length] ?? starterCategories[0].color,
-      created_by: session.user.id,
-    });
+    const name = input.name.trim();
+    if (!name) {
+      setToast({ kind: "error", message: "Enter a category name first." });
+      return;
+    }
+    const alreadyExists = categories.some(
+      (category) => category.type === input.type && category.name.trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (alreadyExists) {
+      setToast({ kind: "error", message: "That category already exists in this workspace." });
+      return;
+    }
+    const { data, error } = await supabase
+      .from("categories")
+      .insert({
+        workspace_id: workspace.id,
+        name,
+        type: input.type,
+        color: defaultCategoryPalette[categories.length % defaultCategoryPalette.length] ?? starterCategories[0].color,
+        created_by: session.user.id,
+      })
+      .select("id, workspace_id, name, type, color")
+      .single();
     if (error) {
       setToast({ kind: "error", message: error.message });
       return;
     }
+    setCategories((current) => [
+      ...current,
+      {
+        id: data.id,
+        workspaceId: data.workspace_id,
+        name: data.name,
+        type: data.type,
+        color: data.color,
+      },
+    ]);
     queueWorkspaceRefresh();
     setToast({ kind: "success", message: "Category added" });
   }
@@ -786,6 +817,10 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
   async function saveBudget(input: { categoryId: string; amount: number; month?: string }) {
     if (!workspace || !session?.user) return;
+    if (!input.categoryId || !categories.some((category) => category.id === input.categoryId)) {
+      setToast({ kind: "error", message: "Pick a valid category before saving the budget." });
+      return;
+    }
     const month = input.month ?? currentMonth;
     const existing = budgets.find((item) => item.categoryId === input.categoryId && item.month === month);
 
@@ -869,6 +904,10 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     date: string;
     note: string;
   }) {
+    if (!input.savingsGoalId || !savingsGoals.some((goal) => goal.id === input.savingsGoalId)) {
+      setToast({ kind: "error", message: "Pick a valid savings goal before applying an adjustment." });
+      return;
+    }
     const delta = input.direction === "add" ? input.amount : input.amount * -1;
     const { error } = await supabase.rpc("adjust_savings_goal", {
       target_goal_id: input.savingsGoalId,
@@ -971,6 +1010,10 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     note: string;
   }) {
     if (!workspace || !session?.user) return;
+    if (!input.categoryId || !categories.some((category) => category.id === input.categoryId)) {
+      setToast({ kind: "error", message: "Pick a valid category before saving the recurring transaction." });
+      return;
+    }
     const payload = {
       workspace_id: workspace.id,
       name: input.name.trim(),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppButton, AppCard, AppPanel, EmptyState, ForecastChart, MetricCard, SectionHeading } from "@/components/finance/ui";
 import { useCurrentUserSalarySummary, useFinanceWorkspace } from "@/hooks/use-finance-workspace";
 import type { CategoryType, SplitMode } from "@/lib/types";
@@ -202,6 +202,24 @@ export function TransactionsPage() {
   const categoryOptions =
     recurringForm.type === "income" ? incomeCategories : expenseCategories;
   const actualTransactions = transactions.filter((item) => !item.isPrediction);
+
+  useEffect(() => {
+    const fallbackCategoryId = expenseCategories[0]?.id ?? incomeCategories[0]?.id ?? "";
+    if (!fallbackCategoryId) return;
+    if (transactionForm.categoryId && categories.some((category) => category.id === transactionForm.categoryId)) return;
+    queueMicrotask(() => {
+      setTransactionForm((current) => ({ ...current, categoryId: fallbackCategoryId }));
+    });
+  }, [categories, expenseCategories, incomeCategories, transactionForm.categoryId]);
+
+  useEffect(() => {
+    const fallbackCategoryId = categoryOptions[0]?.id ?? "";
+    if (!fallbackCategoryId) return;
+    if (recurringForm.categoryId && categoryOptions.some((category) => category.id === recurringForm.categoryId)) return;
+    queueMicrotask(() => {
+      setRecurringForm((current) => ({ ...current, categoryId: fallbackCategoryId }));
+    });
+  }, [categoryOptions, recurringForm.categoryId]);
 
   return (
     <div className="grid gap-6">
@@ -511,6 +529,15 @@ export function BudgetsPage() {
       return { budget, category, risk };
     });
 
+  useEffect(() => {
+    const fallbackCategoryId = categories.find((item) => item.type === "expense")?.id ?? "";
+    if (!fallbackCategoryId) return;
+    if (budgetForm.categoryId && categories.some((category) => category.id === budgetForm.categoryId)) return;
+    queueMicrotask(() => {
+      setBudgetForm((current) => ({ ...current, categoryId: fallbackCategoryId }));
+    });
+  }, [budgetForm.categoryId, categories]);
+
   return (
     <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
       <AppCard>
@@ -570,6 +597,15 @@ export function SavingsPage() {
     date: "",
     note: "",
   });
+
+  useEffect(() => {
+    const fallbackGoalId = savingsGoals[0]?.id ?? "";
+    if (!fallbackGoalId) return;
+    if (adjustForm.savingsGoalId && savingsGoals.some((goal) => goal.id === adjustForm.savingsGoalId)) return;
+    queueMicrotask(() => {
+      setAdjustForm((current) => ({ ...current, savingsGoalId: fallbackGoalId }));
+    });
+  }, [adjustForm.savingsGoalId, savingsGoals]);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
@@ -854,6 +890,22 @@ export function SettingsPage() {
     firstPaymentDate: existingSalary?.firstPaymentDate ?? "",
     paymentFrequency: existingSalary?.paymentFrequency ?? "monthly",
   });
+
+  useEffect(() => {
+    if (!salaryProfiles[0]) return;
+    const currentSalary = salaryProfiles[0];
+    queueMicrotask(() => {
+      setSalaryForm({
+        annualGrossSalary: String(currentSalary.annualGrossSalary),
+        taxRegion: currentSalary.taxRegion,
+        studentLoanPlan: currentSalary.studentLoanPlan,
+        postgraduateLoan: currentSalary.postgraduateLoan,
+        taxCode: currentSalary.taxCode,
+        firstPaymentDate: currentSalary.firstPaymentDate ?? "",
+        paymentFrequency: currentSalary.paymentFrequency,
+      });
+    });
+  }, [salaryProfiles]);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">

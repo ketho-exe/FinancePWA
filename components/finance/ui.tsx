@@ -28,6 +28,7 @@ export function AppButton({
   children,
   className = "",
   variant = "primary",
+  type = "button",
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   children: ReactNode;
@@ -35,6 +36,7 @@ export function AppButton({
 }) {
   return (
     <button
+      type={type}
       className={`app-button ${variant === "primary" ? "app-button--primary" : "app-button--ghost"} ${className}`.trim()}
       {...props}
     >
