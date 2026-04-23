@@ -14,10 +14,22 @@ export function createSupabaseBrowserClient() {
     throw new Error("Missing Supabase environment variables.");
   }
 
+  let authLock = Promise.resolve();
+
   return createClient(supabaseConfig.url, supabaseConfig.anonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
+      // Avoid browser LockManager hangs that can stall session restore and all
+      // subsequent authenticated queries on some browsers.
+      lock: async (_name, _acquireTimeout, fn) => {
+        const run = authLock.then(() => fn());
+        authLock = run.then(
+          () => undefined,
+          () => undefined,
+        );
+        return run;
+      },
     },
   });
 }
