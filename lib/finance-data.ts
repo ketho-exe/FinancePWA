@@ -629,76 +629,64 @@ export type WorkspaceBundle = {
 async function readWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
   const profile = await ensureProfile(user);
   const workspaceId = await ensureWorkspace(user.id);
-  const transactionsPromise = fetchTransactionsForWorkspace(workspaceId);
-
-  const [
-    workspaceResult,
-    memberResult,
-    categoryResult,
-    transactionResult,
-    budgetResult,
-    savingsResult,
-    salaryResult,
-    recurringResult,
-    wishlistResult,
-    tagResult,
-    historyResult,
-  ] = await Promise.all([
-    supabase.from("workspaces").select("id, name").eq("id", workspaceId).single<DbWorkspaceRow>(),
-    supabase
-      .from("workspace_members")
-      .select("user_id, role")
-      .eq("workspace_id", workspaceId)
-      .returns<DbWorkspaceMemberRow[]>(),
-    supabase
-      .from("categories")
-      .select("id, workspace_id, name, type, color")
-      .eq("workspace_id", workspaceId)
-      .order("created_at", { ascending: true })
-      .returns<DbCategoryRow[]>(),
-    transactionsPromise,
-    supabase
-      .from("budgets")
-      .select("id, workspace_id, category_id, month, amount")
-      .eq("workspace_id", workspaceId)
-      .returns<DbBudgetRow[]>(),
-    supabase
-      .from("savings_goals")
-      .select("id, workspace_id, name, target_amount, current_amount, monthly_contribution, note")
-      .eq("workspace_id", workspaceId)
-      .order("created_at", { ascending: true })
-      .returns<DbSavingsGoalRow[]>(),
-    supabase
-      .from("salary_profiles")
-      .select("id, workspace_id, profile_id, annual_gross_salary, tax_region, student_loan_plan, postgraduate_loan, tax_code, first_payment_date, payment_frequency")
-      .eq("workspace_id", workspaceId)
-      .returns<DbSalaryProfileRow[]>(),
-    supabase
-      .from("recurring_transactions")
-      .select("id, workspace_id, name, amount, type, category_id, frequency, interval_value, start_date, end_date, next_run_date, created_by, mode, note")
-      .eq("workspace_id", workspaceId)
-      .order("created_at", { ascending: true })
-      .returns<DbRecurringTransactionRow[]>(),
-    supabase
-      .from("wishlist_items")
-      .select("id, workspace_id, name, price, priority, linked_savings_goal_id, target_date, created_by, note")
-      .eq("workspace_id", workspaceId)
-      .order("created_at", { ascending: true })
-      .returns<DbWishlistItemRow[]>(),
-    supabase
-      .from("transaction_tags")
-      .select("id, workspace_id, name, color, created_by")
-      .eq("workspace_id", workspaceId)
-      .order("name", { ascending: true })
-      .returns<DbTransactionTagRow[]>(),
-    supabase
-      .from("transaction_history")
-      .select("id, transaction_id, workspace_id, action, snapshot, changed_by, created_at")
-      .eq("workspace_id", workspaceId)
-      .order("created_at", { ascending: false })
-      .limit(40)
-      .returns<DbTransactionHistoryRow[]>(),
-  ]);
+  const workspaceResult = await supabase
+    .from("workspaces")
+    .select("id, name")
+    .eq("id", workspaceId)
+    .single<DbWorkspaceRow>();
+  const memberResult = await supabase
+    .from("workspace_members")
+    .select("user_id, role")
+    .eq("workspace_id", workspaceId)
+    .returns<DbWorkspaceMemberRow[]>();
+  const categoryResult = await supabase
+    .from("categories")
+    .select("id, workspace_id, name, type, color")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: true })
+    .returns<DbCategoryRow[]>();
+  const transactionResult = await fetchTransactionsForWorkspace(workspaceId);
+  const budgetResult = await supabase
+    .from("budgets")
+    .select("id, workspace_id, category_id, month, amount")
+    .eq("workspace_id", workspaceId)
+    .returns<DbBudgetRow[]>();
+  const savingsResult = await supabase
+    .from("savings_goals")
+    .select("id, workspace_id, name, target_amount, current_amount, monthly_contribution, note")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: true })
+    .returns<DbSavingsGoalRow[]>();
+  const salaryResult = await supabase
+    .from("salary_profiles")
+    .select("id, workspace_id, profile_id, annual_gross_salary, tax_region, student_loan_plan, postgraduate_loan, tax_code, first_payment_date, payment_frequency")
+    .eq("workspace_id", workspaceId)
+    .returns<DbSalaryProfileRow[]>();
+  const recurringResult = await supabase
+    .from("recurring_transactions")
+    .select("id, workspace_id, name, amount, type, category_id, frequency, interval_value, start_date, end_date, next_run_date, created_by, mode, note")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: true })
+    .returns<DbRecurringTransactionRow[]>();
+  const wishlistResult = await supabase
+    .from("wishlist_items")
+    .select("id, workspace_id, name, price, priority, linked_savings_goal_id, target_date, created_by, note")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: true })
+    .returns<DbWishlistItemRow[]>();
+  const tagResult = await supabase
+    .from("transaction_tags")
+    .select("id, workspace_id, name, color, created_by")
+    .eq("workspace_id", workspaceId)
+    .order("name", { ascending: true })
+    .returns<DbTransactionTagRow[]>();
+  const historyResult = await supabase
+    .from("transaction_history")
+    .select("id, transaction_id, workspace_id, action, snapshot, changed_by, created_at")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(40)
+    .returns<DbTransactionHistoryRow[]>();
 
   if (workspaceResult.error) throw workspaceResult.error;
   if (memberResult.error) throw memberResult.error;
