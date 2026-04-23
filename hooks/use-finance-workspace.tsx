@@ -2,7 +2,6 @@
 
 import {
   createContext,
-  startTransition,
   useContext,
   useEffectEvent,
   useEffect,
@@ -287,21 +286,19 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   const actualTransactions = transactions.filter((item) => !item.isPrediction);
 
   async function applyBundle(bundle: WorkspaceBundle) {
-    startTransition(() => {
-      setWorkspace(bundle.workspace);
-      setMembers(bundle.members);
-      setCategories(bundle.categories);
-      setTransactions(bundle.transactions);
-      setBudgets(bundle.budgets);
-      setSavingsGoals(bundle.savingsGoals);
-      setSalaryProfiles(bundle.salaryProfiles);
-      setSavingsGoalEntries(bundle.savingsGoalEntries);
-      setRecurringTransactions(bundle.recurringTransactions);
-      setWishlistItems(bundle.wishlistItems);
-      setTransactionTags(bundle.transactionTags);
-      setTransactionTagMaps(bundle.transactionTagMaps);
-      setTransactionHistory(bundle.transactionHistory);
-    });
+    setWorkspace(bundle.workspace);
+    setMembers(bundle.members);
+    setCategories(bundle.categories);
+    setTransactions(bundle.transactions);
+    setBudgets(bundle.budgets);
+    setSavingsGoals(bundle.savingsGoals);
+    setSalaryProfiles(bundle.salaryProfiles);
+    setSavingsGoalEntries(bundle.savingsGoalEntries);
+    setRecurringTransactions(bundle.recurringTransactions);
+    setWishlistItems(bundle.wishlistItems);
+    setTransactionTags(bundle.transactionTags);
+    setTransactionTagMaps(bundle.transactionTagMaps);
+    setTransactionHistory(bundle.transactionHistory);
     writeWorkspaceCache(bundle);
   }
 
@@ -373,7 +370,11 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     const cachedBundle = readWorkspaceCache();
 
     if (cachedBundle) {
-      void applyBundle(cachedBundle);
+      queueMicrotask(() => {
+        if (active) {
+          void applyBundle(cachedBundle);
+        }
+      });
     }
 
     void supabase.auth
