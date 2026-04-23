@@ -263,6 +263,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   const deleteUndoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLoadedUserIdRef = useRef<string | null>(null);
   const inFlightWorkspaceLoadUserIdRef = useRef<string | null>(null);
+  const inFlightDerivedSyncUserIdRef = useRef<string | null>(null);
   const workspaceId = workspace?.id ?? null;
   const hasWorkspace = workspace !== null;
   const sessionUserId = session?.user?.id ?? null;
@@ -326,6 +327,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       await applyBundle(bundle);
       lastLoadedUserIdRef.current = session.user.id;
       setLoadingDiagnostics("Workspace refresh complete");
+      inFlightDerivedSyncUserIdRef.current = session.user.id;
       void syncWorkspaceDerivedData(session.user, bundle, session.access_token)
         .then((nextBundle) => {
           if (nextBundle) {
@@ -334,6 +336,11 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         })
         .catch(() => {
           // Derived sync should not block rendering or break the main workspace load.
+        })
+        .finally(() => {
+          if (inFlightDerivedSyncUserIdRef.current === session.user.id) {
+            inFlightDerivedSyncUserIdRef.current = null;
+          }
         });
     } catch (error) {
       const message =
@@ -485,6 +492,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         await applyBundle(bundle);
         lastLoadedUserIdRef.current = sessionUserId;
         setLoadingDiagnostics("Workspace loaded");
+        inFlightDerivedSyncUserIdRef.current = activeUser.id;
         void syncWorkspaceDerivedData(activeUser, bundle, accessToken)
           .then((nextBundle) => {
             if (!active || !nextBundle) return;
@@ -492,6 +500,11 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
           })
           .catch(() => {
             // Keep boot resilient if optional background sync fails in production.
+          })
+          .finally(() => {
+            if (inFlightDerivedSyncUserIdRef.current === activeUser.id) {
+              inFlightDerivedSyncUserIdRef.current = null;
+            }
           });
       } catch (error) {
         if (!active) return;
@@ -515,6 +528,9 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   }, [hasWorkspace, session?.user, session?.access_token, sessionUserId, workspaceId]);
 
   const handleWorkspaceRealtime = useEffectEvent(() => {
+    if (inFlightWorkspaceLoadUserIdRef.current || inFlightDerivedSyncUserIdRef.current) {
+      return;
+    }
     void refreshWorkspaceData();
   });
 
