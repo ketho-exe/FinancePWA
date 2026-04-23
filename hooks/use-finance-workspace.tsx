@@ -433,7 +433,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     const currentUser = session?.user ?? null;
     if (!hasSupabase || !sessionUserId || !currentUser) return;
-    if (lastLoadedUserIdRef.current === sessionUserId && workspaceId) return;
+    if (lastLoadedUserIdRef.current === sessionUserId) return;
     let active = true;
     const activeUser = currentUser;
 
