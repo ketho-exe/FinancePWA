@@ -16,6 +16,7 @@ import {
   defaultCategoryPalette,
   hasSupabase,
   loadWorkspaceBundle,
+  loadWorkspaceSummary,
   syncWorkspaceDerivedData,
   starterCategories,
   subscribeToWorkspace,
@@ -59,6 +60,7 @@ type WorkspaceSummary = {
 
 type AuthMode = "sign-in" | "sign-up";
 const WORKSPACE_LOAD_TIMEOUT_MS = 15000;
+const WORKSPACE_SUMMARY_TIMEOUT_MS = 8000;
 const WORKSPACE_CACHE_KEY = "finance-workspace-cache-v1";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
@@ -262,6 +264,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   const lastLoadedUserIdRef = useRef<string | null>(null);
   const inFlightWorkspaceLoadUserIdRef = useRef<string | null>(null);
   const workspaceId = workspace?.id ?? null;
+  const hasWorkspace = workspace !== null;
   const sessionUserId = session?.user?.id ?? null;
 
   const resetWorkspaceState = useEffectEvent(() => {
@@ -462,6 +465,17 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         if (inFlightWorkspaceLoadUserIdRef.current === activeUser.id) return;
         inFlightWorkspaceLoadUserIdRef.current = activeUser.id;
 
+        if (!hasWorkspace) {
+          const workspaceSummary = await withTimeout(
+            loadWorkspaceSummary(activeUser, accessToken),
+            WORKSPACE_SUMMARY_TIMEOUT_MS,
+            "Loading your finance workspace",
+          );
+          if (!active) return;
+          setWorkspace(workspaceSummary);
+          setLoadingDiagnostics(`Loading data for ${activeUser.email ?? "current user"}`);
+        }
+
         const bundle = await withTimeout(
           loadWorkspaceBundle(activeUser, accessToken),
           WORKSPACE_LOAD_TIMEOUT_MS,
@@ -498,7 +512,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     return () => {
       active = false;
     };
-  }, [session?.user, session?.access_token, sessionUserId, workspaceId]);
+  }, [hasWorkspace, session?.user, session?.access_token, sessionUserId, workspaceId]);
 
   const handleWorkspaceRealtime = useEffectEvent(() => {
     void refreshWorkspaceData();

@@ -761,6 +761,20 @@ export async function loadWorkspaceBundle(user: User, accessToken?: string): Pro
   return readWorkspaceBundle(user, accessToken);
 }
 
+export async function loadWorkspaceSummary(user: User, accessToken?: string): Promise<DbWorkspaceRow> {
+  const client = getFinanceDataClient(accessToken);
+  await ensureProfile(user, client);
+  const workspaceId = await ensureWorkspace(user.id, client);
+  const { data, error } = await client
+    .from("workspaces")
+    .select("id, name")
+    .eq("id", workspaceId)
+    .single<DbWorkspaceRow>();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function syncWorkspaceDerivedData(
   user: User,
   bundle: WorkspaceBundle,
