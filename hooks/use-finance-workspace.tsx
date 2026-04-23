@@ -307,13 +307,13 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
   async function refreshWorkspaceData() {
     if (!session?.user) return;
-    if (inFlightWorkspaceLoadUserIdRef.current === session.user.id) return;
-
-    inFlightWorkspaceLoadUserIdRef.current = session.user.id;
     setDataLoading(true);
     setDataError("");
 
     try {
+      if (inFlightWorkspaceLoadUserIdRef.current === session.user.id) return;
+      inFlightWorkspaceLoadUserIdRef.current = session.user.id;
+
       const bundle = await withTimeout(
         loadWorkspaceBundle(session.user),
         WORKSPACE_LOAD_TIMEOUT_MS,
@@ -442,6 +442,9 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setDataError("");
 
       try {
+        if (inFlightWorkspaceLoadUserIdRef.current === activeUser.id) return;
+        inFlightWorkspaceLoadUserIdRef.current = activeUser.id;
+
         const bundle = await withTimeout(
           loadWorkspaceBundle(activeUser),
           WORKSPACE_LOAD_TIMEOUT_MS,
@@ -465,6 +468,9 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
           `${message} If this keeps happening, check Supabase auth, RLS policies, and browser network requests.`,
         );
       } finally {
+        if (inFlightWorkspaceLoadUserIdRef.current === activeUser.id) {
+          inFlightWorkspaceLoadUserIdRef.current = null;
+        }
         if (active) setDataLoading(false);
       }
     }
