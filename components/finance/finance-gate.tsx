@@ -20,6 +20,7 @@ function FinanceAppContent({ children }: { children: ReactNode }) {
     authMessage,
     authMode,
     dataLoading,
+    loadingDiagnostics,
     dataError,
     handleAuthSubmit,
     handleMagicLink,
@@ -58,18 +59,19 @@ function FinanceAppContent({ children }: { children: ReactNode }) {
     );
   }
 
-  if (dataLoading && !workspace) {
-    return <LoadingScreen label="Loading your finance space..." />;
-  }
-
   if (dataError && !workspace) {
     return (
       <DataErrorScreen
         message={dataError}
+        diagnostics={loadingDiagnostics}
         onRetry={refreshWorkspaceData}
         onSignOut={handleSignOut}
       />
     );
+  }
+
+  if (dataLoading && !workspace) {
+    return <LoadingScreen label="Loading your finance space..." detail={loadingDiagnostics} />;
   }
 
   return (
@@ -126,12 +128,13 @@ function FinanceAppContent({ children }: { children: ReactNode }) {
   );
 }
 
-function LoadingScreen({ label }: { label: string }) {
+function LoadingScreen({ label, detail }: { label: string; detail?: string }) {
   return (
     <div className="app-page-shell flex min-h-screen items-center justify-center px-6">
       <div className="app-card max-w-md px-8 py-10 text-center">
         <div className="mx-auto h-12 w-12 animate-pulse rounded-full bg-blue-400/20" />
         <p className="mt-5 text-lg font-medium text-white">{label}</p>
+        {detail ? <p className="mt-3 text-sm text-slate-400">{detail}</p> : null}
       </div>
     </div>
   );
@@ -157,10 +160,12 @@ function ConfigScreen() {
 
 function DataErrorScreen({
   message,
+  diagnostics,
   onRetry,
   onSignOut,
 }: {
   message: string;
+  diagnostics?: string;
   onRetry: () => Promise<void>;
   onSignOut: () => Promise<void>;
 }) {
@@ -174,6 +179,9 @@ function DataErrorScreen({
           The app could not finish loading your finance workspace.
         </h1>
         <p className="mt-3 text-sm text-slate-400">{message}</p>
+        {diagnostics ? (
+          <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">{diagnostics}</p>
+        ) : null}
         <div className="mt-6 flex flex-wrap gap-3">
           <button type="button" className="app-button app-button--primary" onClick={() => void onRetry()}>
             Retry loading

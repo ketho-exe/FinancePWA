@@ -97,6 +97,7 @@ type FinanceWorkspaceContextValue = {
   session: Session | null;
   authLoading: boolean;
   dataLoading: boolean;
+  loadingDiagnostics: string;
   authBusy: boolean;
   authMode: AuthMode;
   authMessage: string;
@@ -235,6 +236,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   const [authMode, setAuthMode] = useState<AuthMode>("sign-in");
   const [authMessage, setAuthMessage] = useState("");
   const [dataError, setDataError] = useState("");
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState("Waiting for session");
   const [toast, setToast] = useState<{ kind: "success" | "error" | "info"; message: string } | null>(null);
   const [authForm, setAuthForm] = useState({
     email: "",
@@ -265,6 +267,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   const resetWorkspaceState = useEffectEvent(() => {
     lastLoadedUserIdRef.current = null;
     clearWorkspaceCache();
+    setLoadingDiagnostics("Waiting for session");
     setWorkspace(null);
     setMembers([]);
     setCategories([]);
@@ -306,6 +309,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     if (!session?.user) return;
     setDataLoading(true);
     setDataError("");
+    setLoadingDiagnostics("Refreshing workspace data");
 
     try {
       if (inFlightWorkspaceLoadUserIdRef.current === session.user.id) return;
@@ -318,6 +322,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       );
       await applyBundle(bundle);
       lastLoadedUserIdRef.current = session.user.id;
+      setLoadingDiagnostics("Workspace refresh complete");
       void syncWorkspaceDerivedData(session.user, bundle)
         .then((nextBundle) => {
           if (nextBundle) {
@@ -330,6 +335,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to refresh workspace.";
+      setLoadingDiagnostics(`Refresh failed: ${message}`);
       setDataError(
         `${message} If this keeps happening, check Supabase auth, RLS policies, and browser network requests.`,
       );
@@ -372,20 +378,28 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     if (cachedBundle) {
       queueMicrotask(() => {
         if (active) {
+          setLoadingDiagnostics("Restoring cached workspace");
           void applyBundle(cachedBundle);
         }
       });
     }
 
+    queueMicrotask(() => {
+      if (active) {
+        setLoadingDiagnostics("Restoring session");
+      }
+    });
     void supabase.auth
       .getSession()
       .then(({ data, error }) => {
         if (!active) return;
         if (error) {
+          setLoadingDiagnostics(`Session restore failed: ${error.message}`);
           setAuthMessage(error.message);
           return;
         }
 
+        setLoadingDiagnostics(data.session ? "Session restored" : "No active session");
         setSession((current) => {
           if (
             current?.user?.id === data.session?.user?.id &&
@@ -398,6 +412,9 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       })
       .catch((error) => {
         if (!active) return;
+        setLoadingDiagnostics(
+          error instanceof Error ? `Session restore failed: ${error.message}` : "Unable to restore your session.",
+        );
         setAuthMessage(error instanceof Error ? error.message : "Unable to restore your session.");
       })
       .finally(() => {
@@ -408,6 +425,9 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return;
+      setLoadingDiagnostics(
+        nextSession ? `Auth event: ${event}` : `Auth event: ${event} (signed out)`,
+      );
       setSession((current) => {
         if (
           current?.user?.id === nextSession?.user?.id &&
@@ -441,6 +461,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     async function load() {
       setDataLoading(true);
       setDataError("");
+      setLoadingDiagnostics(`Loading workspace for ${activeUser.email ?? "current user"}`);
 
       try {
         if (inFlightWorkspaceLoadUserIdRef.current === activeUser.id) return;
@@ -454,6 +475,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         if (!active) return;
         await applyBundle(bundle);
         lastLoadedUserIdRef.current = sessionUserId;
+        setLoadingDiagnostics("Workspace loaded");
         void syncWorkspaceDerivedData(activeUser, bundle)
           .then((nextBundle) => {
             if (!active || !nextBundle) return;
@@ -465,6 +487,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       } catch (error) {
         if (!active) return;
         const message = error instanceof Error ? error.message : "Unable to load workspace.";
+        setLoadingDiagnostics(`Workspace load failed: ${message}`);
         setDataError(
           `${message} If this keeps happening, check Supabase auth, RLS policies, and browser network requests.`,
         );
@@ -497,6 +520,18 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     const timeout = setTimeout(() => setToast(null), 2400);
     return () => clearTimeout(timeout);
   }, [toast]);
+
+  useEffect(() => {
+    if (!sessionUserId || workspace || !dataLoading || dataError) return;
+
+    const timeout = setTimeout(() => {
+      setDataError(
+        `Workspace loading is taking longer than expected. Latest step: ${loadingDiagnostics}. If this keeps happening, retry loading or sign out and back in.`,
+      );
+    }, WORKSPACE_LOAD_TIMEOUT_MS + 2000);
+
+    return () => clearTimeout(timeout);
+  }, [dataError, dataLoading, loadingDiagnostics, sessionUserId, workspace]);
 
   const forecast = useMemo(
     () =>
@@ -1037,6 +1072,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     session,
     authLoading,
     dataLoading,
+    loadingDiagnostics,
     authBusy,
     authMode,
     authMessage,
