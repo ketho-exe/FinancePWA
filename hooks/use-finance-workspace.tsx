@@ -259,6 +259,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   const [deletedTransactionPendingUndo, setDeletedTransactionPendingUndo] = useState<Transaction | null>(null);
   const deleteUndoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLoadedUserIdRef = useRef<string | null>(null);
+  const inFlightWorkspaceLoadUserIdRef = useRef<string | null>(null);
   const workspaceId = workspace?.id ?? null;
   const sessionUserId = session?.user?.id ?? null;
 
@@ -306,6 +307,9 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
   async function refreshWorkspaceData() {
     if (!session?.user) return;
+    if (inFlightWorkspaceLoadUserIdRef.current === session.user.id) return;
+
+    inFlightWorkspaceLoadUserIdRef.current = session.user.id;
     setDataLoading(true);
     setDataError("");
 
@@ -334,6 +338,9 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       );
       throw error;
     } finally {
+      if (inFlightWorkspaceLoadUserIdRef.current === session.user.id) {
+        inFlightWorkspaceLoadUserIdRef.current = null;
+      }
       setDataLoading(false);
     }
   }
@@ -411,6 +418,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       });
 
       if (!nextSession && event === "SIGNED_OUT") {
+        inFlightWorkspaceLoadUserIdRef.current = null;
         resetWorkspaceState();
       }
       setAuthLoading(false);
@@ -423,10 +431,11 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   }, []);
 
   useEffect(() => {
-    if (!hasSupabase || !sessionUserId || !session?.user) return;
-    if (lastLoadedUserIdRef.current === sessionUserId && workspace) return;
+    const currentUser = session?.user ?? null;
+    if (!hasSupabase || !sessionUserId || !currentUser) return;
+    if (lastLoadedUserIdRef.current === sessionUserId && workspaceId) return;
     let active = true;
-    const currentUser = session.user;
+    const activeUser = currentUser;
 
     async function load() {
       setDataLoading(true);
@@ -434,14 +443,14 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
       try {
         const bundle = await withTimeout(
-          loadWorkspaceBundle(currentUser),
+          loadWorkspaceBundle(activeUser),
           WORKSPACE_LOAD_TIMEOUT_MS,
           "Loading your finance workspace",
         );
         if (!active) return;
         await applyBundle(bundle);
         lastLoadedUserIdRef.current = sessionUserId;
-        void syncWorkspaceDerivedData(currentUser, bundle)
+        void syncWorkspaceDerivedData(activeUser, bundle)
           .then((nextBundle) => {
             if (!active || !nextBundle) return;
             void applyBundle(nextBundle);
@@ -464,7 +473,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     return () => {
       active = false;
     };
-  }, [sessionUserId, workspace, session?.user]);
+  }, [session?.user, sessionUserId, workspaceId]);
 
   const handleWorkspaceRealtime = useEffectEvent(() => {
     void refreshWorkspaceData();
