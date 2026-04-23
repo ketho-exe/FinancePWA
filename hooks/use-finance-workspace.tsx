@@ -262,6 +262,24 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
   const workspaceId = workspace?.id ?? null;
   const sessionUserId = session?.user?.id ?? null;
 
+  const resetWorkspaceState = useEffectEvent(() => {
+    lastLoadedUserIdRef.current = null;
+    clearWorkspaceCache();
+    setWorkspace(null);
+    setMembers([]);
+    setCategories([]);
+    setTransactions([]);
+    setBudgets([]);
+    setSavingsGoals([]);
+    setSalaryProfiles([]);
+    setSavingsGoalEntries([]);
+    setRecurringTransactions([]);
+    setWishlistItems([]);
+    setTransactionTags([]);
+    setTransactionTagMaps([]);
+    setTransactionHistory([]);
+  });
+
   const currentMonth = getCurrentMonth();
   const expenseCategories = categories.filter((item) => item.type === "expense");
   const incomeCategories = categories.filter((item) => item.type === "income");
@@ -288,17 +306,36 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
   async function refreshWorkspaceData() {
     if (!session?.user) return;
-    const bundle = await loadWorkspaceBundle(session.user);
-    await applyBundle(bundle);
-    void syncWorkspaceDerivedData(session.user, bundle)
-      .then((nextBundle) => {
-        if (nextBundle) {
-          void applyBundle(nextBundle);
-        }
-      })
-      .catch(() => {
-        // Derived sync should not block rendering or break the main workspace load.
-      });
+    setDataLoading(true);
+    setDataError("");
+
+    try {
+      const bundle = await withTimeout(
+        loadWorkspaceBundle(session.user),
+        WORKSPACE_LOAD_TIMEOUT_MS,
+        "Refreshing your finance workspace",
+      );
+      await applyBundle(bundle);
+      lastLoadedUserIdRef.current = session.user.id;
+      void syncWorkspaceDerivedData(session.user, bundle)
+        .then((nextBundle) => {
+          if (nextBundle) {
+            void applyBundle(nextBundle);
+          }
+        })
+        .catch(() => {
+          // Derived sync should not block rendering or break the main workspace load.
+        });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to refresh workspace.";
+      setDataError(
+        `${message} If this keeps happening, check Supabase auth, RLS policies, and browser network requests.`,
+      );
+      throw error;
+    } finally {
+      setDataLoading(false);
+    }
   }
 
   async function logTransactionHistory(action: "created" | "updated" | "deleted", transaction: Transaction) {
@@ -332,19 +369,32 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       void applyBundle(cachedBundle);
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      setSession((current) => {
-        if (
-          current?.user?.id === data.session?.user?.id &&
-          current?.access_token === data.session?.access_token
-        ) {
-          return current;
+    void supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          setAuthMessage(error.message);
+          return;
         }
-        return data.session;
+
+        setSession((current) => {
+          if (
+            current?.user?.id === data.session?.user?.id &&
+            current?.access_token === data.session?.access_token
+          ) {
+            return current;
+          }
+          return data.session;
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+        setAuthMessage(error instanceof Error ? error.message : "Unable to restore your session.");
+      })
+      .finally(() => {
+        if (active) setAuthLoading(false);
       });
-      setAuthLoading(false);
-    });
 
     const {
       data: { subscription },
@@ -361,21 +411,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       });
 
       if (!nextSession && event === "SIGNED_OUT") {
-        lastLoadedUserIdRef.current = null;
-        clearWorkspaceCache();
-        setWorkspace(null);
-        setMembers([]);
-        setCategories([]);
-        setTransactions([]);
-        setBudgets([]);
-        setSavingsGoals([]);
-        setSalaryProfiles([]);
-        setSavingsGoalEntries([]);
-        setRecurringTransactions([]);
-        setWishlistItems([]);
-        setTransactionTags([]);
-        setTransactionTagMaps([]);
-        setTransactionHistory([]);
+        resetWorkspaceState();
       }
       setAuthLoading(false);
     });

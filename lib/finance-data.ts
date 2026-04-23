@@ -425,7 +425,26 @@ function mapTransactionHistory(row: DbTransactionHistoryRow): TransactionHistory
 }
 
 async function ensureProfile(user: User) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  const displayName =
+    typeof user.user_metadata?.display_name === "string" && user.user_metadata.display_name.trim()
+      ? user.user_metadata.display_name.trim()
+      : user.email?.split("@")[0] ?? "Member";
+
+  // Upsert first so production does not depend on the auth trigger finishing before app bootstrap.
+  const { error: upsertError } = await supabase.from("profiles").upsert(
+    {
+      id: user.id,
+      email: user.email ?? null,
+      display_name: displayName,
+    },
+    { onConflict: "id" },
+  );
+
+  if (upsertError && upsertError.code !== "23505") {
+    throw upsertError;
+  }
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     const { data, error } = await supabase
       .from("profiles")
       .select("id, email, display_name")
@@ -435,27 +454,12 @@ async function ensureProfile(user: User) {
     if (error) throw error;
     if (data) return mapProfile(data);
 
-    const displayName =
-      typeof user.user_metadata?.display_name === "string" && user.user_metadata.display_name.trim()
-        ? user.user_metadata.display_name.trim()
-        : user.email?.split("@")[0] ?? "Member";
-
-    const { error: insertError } = await supabase.from("profiles").insert({
-      id: user.id,
-      email: user.email ?? null,
-      display_name: displayName,
-    });
-
-    if (insertError && insertError.code !== "23505") {
-      throw insertError;
-    }
-
     await new Promise((resolve) => {
-      setTimeout(resolve, 400 * (attempt + 1));
+      setTimeout(resolve, 250 * (attempt + 1));
     });
   }
 
-  throw new Error("Profile not found yet. If you just signed up, try refreshing in a few seconds.");
+  throw new Error("Profile bootstrap did not finish. Check the profiles table policies and auth trigger.");
 }
 
 async function ensureWorkspace(userId: string) {
