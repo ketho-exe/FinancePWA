@@ -875,7 +875,6 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     paymentFrequency: SalaryFrequency;
   }) {
     if (!workspace || !session?.user) return;
-    const existing = salaryProfiles.find((item) => item.profileId === session.user.id);
     const payload = {
       workspace_id: workspace.id,
       profile_id: session.user.id,
@@ -887,10 +886,9 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       first_payment_date: input.firstPaymentDate || null,
       payment_frequency: input.paymentFrequency,
     };
-    const query = existing
-      ? supabase.from("salary_profiles").update(payload).eq("id", existing.id)
-      : supabase.from("salary_profiles").insert(payload);
-    const { error } = await query;
+    const { error } = await supabase.from("salary_profiles").upsert(payload, {
+      onConflict: "workspace_id,profile_id",
+    });
     if (error) {
       setToast({ kind: "error", message: error.message });
       return;

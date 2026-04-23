@@ -1096,29 +1096,8 @@ export function FinanceApp() {
     const annualGrossSalary = Number(salaryForm.annualGrossSalary);
     if (Number.isNaN(annualGrossSalary)) return;
 
-    const existing = salaryProfiles.find((item) => item.profileId === session.user.id);
-
-    if (existing) {
-      const { error } = await supabase
-        .from("salary_profiles")
-        .update({
-          annual_gross_salary: annualGrossSalary,
-          tax_region: salaryForm.taxRegion,
-          student_loan_plan: salaryForm.studentLoanPlan,
-          postgraduate_loan: salaryForm.postgraduateLoan,
-          tax_code: salaryForm.taxCode.trim() || "1257L",
-          first_payment_date: salaryForm.firstPaymentDate || null,
-          payment_frequency: salaryForm.paymentFrequency,
-        })
-        .eq("id", existing.id);
-
-      if (error) {
-        setDataError(error.message);
-        setToast({ kind: "error", message: error.message });
-        return;
-      }
-    } else {
-      const { error } = await supabase.from("salary_profiles").insert({
+    const { error } = await supabase.from("salary_profiles").upsert(
+      {
         workspace_id: workspace.id,
         profile_id: session.user.id,
         annual_gross_salary: annualGrossSalary,
@@ -1128,13 +1107,16 @@ export function FinanceApp() {
         tax_code: salaryForm.taxCode.trim() || "1257L",
         first_payment_date: salaryForm.firstPaymentDate || null,
         payment_frequency: salaryForm.paymentFrequency,
-      });
+      },
+      {
+        onConflict: "workspace_id,profile_id",
+      },
+    );
 
-      if (error) {
-        setDataError(error.message);
-        setToast({ kind: "error", message: error.message });
-        return;
-      }
+    if (error) {
+      setDataError(error.message);
+      setToast({ kind: "error", message: error.message });
+      return;
     }
 
     await refreshWorkspaceData();
