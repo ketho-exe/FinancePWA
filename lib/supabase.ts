@@ -34,6 +34,25 @@ export function createSupabaseBrowserClient() {
   });
 }
 
+export function createSupabaseSessionClient(accessToken: string) {
+  if (!hasSupabaseEnv()) {
+    throw new Error("Missing Supabase environment variables.");
+  }
+
+  return createClient(supabaseConfig.url, supabaseConfig.anonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
 export const supabaseBrowserClient = hasSupabaseEnv()
   ? createSupabaseBrowserClient()
   : null;

@@ -316,14 +316,14 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       inFlightWorkspaceLoadUserIdRef.current = session.user.id;
 
       const bundle = await withTimeout(
-        loadWorkspaceBundle(session.user),
+        loadWorkspaceBundle(session.user, session.access_token),
         WORKSPACE_LOAD_TIMEOUT_MS,
         "Refreshing your finance workspace",
       );
       await applyBundle(bundle);
       lastLoadedUserIdRef.current = session.user.id;
       setLoadingDiagnostics("Workspace refresh complete");
-      void syncWorkspaceDerivedData(session.user, bundle)
+      void syncWorkspaceDerivedData(session.user, bundle, session.access_token)
         .then((nextBundle) => {
           if (nextBundle) {
             void applyBundle(nextBundle);
@@ -447,6 +447,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     const currentUser = session?.user ?? null;
+    const accessToken = session?.access_token;
     if (!hasSupabase || !sessionUserId || !currentUser) return;
     if (lastLoadedUserIdRef.current === sessionUserId) return;
     let active = true;
@@ -462,7 +463,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         inFlightWorkspaceLoadUserIdRef.current = activeUser.id;
 
         const bundle = await withTimeout(
-          loadWorkspaceBundle(activeUser),
+          loadWorkspaceBundle(activeUser, accessToken),
           WORKSPACE_LOAD_TIMEOUT_MS,
           "Loading your finance workspace",
         );
@@ -470,7 +471,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         await applyBundle(bundle);
         lastLoadedUserIdRef.current = sessionUserId;
         setLoadingDiagnostics("Workspace loaded");
-        void syncWorkspaceDerivedData(activeUser, bundle)
+        void syncWorkspaceDerivedData(activeUser, bundle, accessToken)
           .then((nextBundle) => {
             if (!active || !nextBundle) return;
             void applyBundle(nextBundle);
@@ -497,7 +498,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     return () => {
       active = false;
     };
-  }, [session?.user, sessionUserId, workspaceId]);
+  }, [session?.user, session?.access_token, sessionUserId, workspaceId]);
 
   const handleWorkspaceRealtime = useEffectEvent(() => {
     void refreshWorkspaceData();

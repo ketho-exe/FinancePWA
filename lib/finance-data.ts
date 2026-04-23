@@ -1,4 +1,4 @@
-import type { User } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type {
   Budget,
   Category,
@@ -21,12 +21,17 @@ import type {
   WishlistPriority,
 } from "@/lib/types";
 import { calculateSalaryBreakdown, getSalaryPeriodTakeHome } from "@/lib/payroll";
-import { supabaseBrowserClient } from "@/lib/supabase";
+import { createSupabaseSessionClient, supabaseBrowserClient } from "@/lib/supabase";
 import { getRecurringDatesInMonth, getNextRecurringDate } from "@/lib/recurring";
 import { getCurrentMonth, getTodayIso } from "@/lib/utils";
 
 export const hasSupabase = Boolean(supabaseBrowserClient);
 export const supabase = supabaseBrowserClient as NonNullable<typeof supabaseBrowserClient>;
+type FinanceDataClient = SupabaseClient;
+
+function getFinanceDataClient(accessToken?: string) {
+  return accessToken ? createSupabaseSessionClient(accessToken) : supabase;
+}
 
 export const defaultCategoryPalette = [
   "#6fcf97",
@@ -209,8 +214,8 @@ function isMissingResourceError(error: SupabaseLikeError | null | undefined) {
   );
 }
 
-async function fetchTransactionsForWorkspace(workspaceId: string) {
-  const fullResult = await supabase
+async function fetchTransactionsForWorkspace(workspaceId: string, client: FinanceDataClient) {
+  const fullResult = await client
     .from("transactions")
     .select("id, workspace_id, category_id, amount, description, transaction_date, created_by, recurring_transaction_id, generated_source, is_prediction, split_mode, split_participants, split_amount")
     .eq("workspace_id", workspaceId)
@@ -221,7 +226,7 @@ async function fetchTransactionsForWorkspace(workspaceId: string) {
     return fullResult;
   }
 
-  const fallbackResult = await supabase
+  const fallbackResult = await client
     .from("transactions")
     .select("id, workspace_id, category_id, amount, description, transaction_date, created_by")
     .eq("workspace_id", workspaceId)
@@ -253,12 +258,15 @@ function emptyResult<T>(): SupabaseQueryResult<T> {
   };
 }
 
-async function fetchSavingsGoalEntriesForWorkspace(savingsGoalIds: string[]) {
+async function fetchSavingsGoalEntriesForWorkspace(
+  savingsGoalIds: string[],
+  client: FinanceDataClient,
+) {
   if (savingsGoalIds.length === 0) {
     return emptyResult<DbSavingsGoalEntryRow>();
   }
 
-  return supabase
+  return client
     .from("savings_goal_entries")
     .select("id, savings_goal_id, amount_delta, entry_date, note, created_by")
     .in("savings_goal_id", savingsGoalIds)
@@ -266,12 +274,15 @@ async function fetchSavingsGoalEntriesForWorkspace(savingsGoalIds: string[]) {
     .returns<DbSavingsGoalEntryRow[]>();
 }
 
-async function fetchTransactionTagMapForWorkspace(transactionIds: string[]) {
+async function fetchTransactionTagMapForWorkspace(
+  transactionIds: string[],
+  client: FinanceDataClient,
+) {
   if (transactionIds.length === 0) {
     return emptyResult<DbTransactionTagMapRow>();
   }
 
-  return supabase
+  return client
     .from("transaction_tag_map")
     .select("transaction_id, tag_id")
     .in("transaction_id", transactionIds)
@@ -424,14 +435,14 @@ function mapTransactionHistory(row: DbTransactionHistoryRow): TransactionHistory
   };
 }
 
-async function ensureProfile(user: User) {
+async function ensureProfile(user: User, client: FinanceDataClient) {
   const displayName =
     typeof user.user_metadata?.display_name === "string" && user.user_metadata.display_name.trim()
       ? user.user_metadata.display_name.trim()
       : user.email?.split("@")[0] ?? "Member";
 
   // Upsert first so production does not depend on the auth trigger finishing before app bootstrap.
-  const { error: upsertError } = await supabase.from("profiles").upsert(
+  const { error: upsertError } = await client.from("profiles").upsert(
     {
       id: user.id,
       email: user.email ?? null,
@@ -445,7 +456,7 @@ async function ensureProfile(user: User) {
   }
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("profiles")
       .select("id, email, display_name")
       .eq("id", user.id)
@@ -462,8 +473,8 @@ async function ensureProfile(user: User) {
   throw new Error("Profile bootstrap did not finish. Check the profiles table policies and auth trigger.");
 }
 
-async function ensureWorkspace(userId: string) {
-  const { data: membershipRows, error: membershipError } = await supabase
+async function ensureWorkspace(userId: string, client: FinanceDataClient) {
+  const { data: membershipRows, error: membershipError } = await client
     .from("workspace_members")
     .select("workspace_id, role")
     .eq("user_id", userId)
@@ -473,21 +484,21 @@ async function ensureWorkspace(userId: string) {
   if (membershipRows && membershipRows.length > 0) return membershipRows[0].workspace_id;
 
   const workspaceId = crypto.randomUUID();
-  const { error: workspaceError } = await supabase.from("workspaces").insert({
+  const { error: workspaceError } = await client.from("workspaces").insert({
     id: workspaceId,
     name: "My Finance Space",
     created_by: userId,
   });
   if (workspaceError) throw workspaceError;
 
-  const { error: memberError } = await supabase.from("workspace_members").insert({
+  const { error: memberError } = await client.from("workspace_members").insert({
     workspace_id: workspaceId,
     user_id: userId,
     role: "owner",
   });
   if (memberError) throw memberError;
 
-  const { error: categoryError } = await supabase.from("categories").insert(
+  const { error: categoryError } = await client.from("categories").insert(
     starterCategories.map((category) => ({
       workspace_id: workspaceId,
       name: category.name,
@@ -506,7 +517,7 @@ async function ensureSalaryTransactions(params: {
   categories: Category[];
   transactions: Transaction[];
   salaryProfiles: SalaryProfile[];
-}) {
+}, client: FinanceDataClient) {
   const currentMonth = getCurrentMonth();
   const salaryCategory = params.categories.find(
     (category) => category.type === "income" && category.name.toLowerCase() === "salary",
@@ -551,7 +562,7 @@ async function ensureSalaryTransactions(params: {
       );
       if (existing) continue;
 
-      const { error } = await supabase.from("transactions").insert({
+      const { error } = await client.from("transactions").insert({
         workspace_id: params.workspaceId,
         category_id: salaryCategory.id,
         amount: Number(periodTakeHome.toFixed(2)),
@@ -570,7 +581,7 @@ async function ensureRecurringTransactions(params: {
   workspaceId: string;
   transactions: Transaction[];
   recurringTransactions: RecurringTransaction[];
-}) {
+}, client: FinanceDataClient) {
   const currentMonth = getCurrentMonth();
 
   for (const recurring of params.recurringTransactions) {
@@ -584,7 +595,7 @@ async function ensureRecurringTransactions(params: {
       );
       if (existing) continue;
 
-      const { error } = await supabase.from("transactions").insert({
+      const { error } = await client.from("transactions").insert({
         workspace_id: params.workspaceId,
         category_id: recurring.categoryId,
         amount: recurring.amount,
@@ -601,7 +612,7 @@ async function ensureRecurringTransactions(params: {
 
     const nextRunDate = getNextRecurringDate(recurring, getTodayIso());
     if (nextRunDate !== recurring.nextRunDate) {
-      await supabase
+      await client
         .from("recurring_transactions")
         .update({ next_run_date: nextRunDate })
         .eq("id", recurring.id);
@@ -626,61 +637,62 @@ export type WorkspaceBundle = {
   transactionHistory: TransactionHistoryEntry[];
 };
 
-async function readWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
-  const profile = await ensureProfile(user);
-  const workspaceId = await ensureWorkspace(user.id);
-  const workspaceResult = await supabase
+async function readWorkspaceBundle(user: User, accessToken?: string): Promise<WorkspaceBundle> {
+  const client = getFinanceDataClient(accessToken);
+  const profile = await ensureProfile(user, client);
+  const workspaceId = await ensureWorkspace(user.id, client);
+  const workspaceResult = await client
     .from("workspaces")
     .select("id, name")
     .eq("id", workspaceId)
     .single<DbWorkspaceRow>();
-  const memberResult = await supabase
+  const memberResult = await client
     .from("workspace_members")
     .select("user_id, role")
     .eq("workspace_id", workspaceId)
     .returns<DbWorkspaceMemberRow[]>();
-  const categoryResult = await supabase
+  const categoryResult = await client
     .from("categories")
     .select("id, workspace_id, name, type, color")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true })
     .returns<DbCategoryRow[]>();
-  const transactionResult = await fetchTransactionsForWorkspace(workspaceId);
-  const budgetResult = await supabase
+  const transactionResult = await fetchTransactionsForWorkspace(workspaceId, client);
+  const budgetResult = await client
     .from("budgets")
     .select("id, workspace_id, category_id, month, amount")
     .eq("workspace_id", workspaceId)
     .returns<DbBudgetRow[]>();
-  const savingsResult = await supabase
+  const savingsResult = await client
     .from("savings_goals")
     .select("id, workspace_id, name, target_amount, current_amount, monthly_contribution, note")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true })
     .returns<DbSavingsGoalRow[]>();
-  const salaryResult = await supabase
+  const salaryResult = await client
     .from("salary_profiles")
     .select("id, workspace_id, profile_id, annual_gross_salary, tax_region, student_loan_plan, postgraduate_loan, tax_code, first_payment_date, payment_frequency")
     .eq("workspace_id", workspaceId)
     .returns<DbSalaryProfileRow[]>();
-  const recurringResult = await supabase
+  const recurringResult = await client
     .from("recurring_transactions")
     .select("id, workspace_id, name, amount, type, category_id, frequency, interval_value, start_date, end_date, next_run_date, created_by, mode, note")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true })
     .returns<DbRecurringTransactionRow[]>();
-  const wishlistResult = await supabase
+  const wishlistResult = await client
     .from("wishlist_items")
     .select("id, workspace_id, name, price, priority, linked_savings_goal_id, target_date, created_by, note")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true })
     .returns<DbWishlistItemRow[]>();
-  const tagResult = await supabase
+  const tagResult = await client
     .from("transaction_tags")
     .select("id, workspace_id, name, color, created_by")
     .eq("workspace_id", workspaceId)
     .order("name", { ascending: true })
     .returns<DbTransactionTagRow[]>();
-  const historyResult = await supabase
+  const historyResult = await client
     .from("transaction_history")
     .select("id, transaction_id, workspace_id, action, snapshot, changed_by, created_at")
     .eq("workspace_id", workspaceId)
@@ -701,7 +713,7 @@ async function readWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
   if (historyResult.error && !isMissingResourceError(historyResult.error)) throw historyResult.error;
 
   const memberIds = (memberResult.data ?? []).map((row) => row.user_id);
-  const { data: profileRows, error: profileError } = await supabase
+  const { data: profileRows, error: profileError } = await client
     .from("profiles")
     .select("id, email, display_name")
     .in("id", memberIds)
@@ -715,6 +727,7 @@ async function readWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
   const recurringTransactions = (recurringResult.data ?? []).map(mapRecurringTransaction);
   const savingsEntryResult = await fetchSavingsGoalEntriesForWorkspace(
     savingsGoals.map((goal) => goal.id),
+    client,
   );
   if (savingsEntryResult.error && !isMissingResourceError(savingsEntryResult.error)) {
     throw savingsEntryResult.error;
@@ -722,6 +735,7 @@ async function readWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
 
   const tagMapResult = await fetchTransactionTagMapForWorkspace(
     transactions.map((transaction) => transaction.id),
+    client,
   );
   if (tagMapResult.error && !isMissingResourceError(tagMapResult.error)) throw tagMapResult.error;
 
@@ -743,24 +757,29 @@ async function readWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
   };
 }
 
-export async function loadWorkspaceBundle(user: User): Promise<WorkspaceBundle> {
-  return readWorkspaceBundle(user);
+export async function loadWorkspaceBundle(user: User, accessToken?: string): Promise<WorkspaceBundle> {
+  return readWorkspaceBundle(user, accessToken);
 }
 
-export async function syncWorkspaceDerivedData(user: User, bundle: WorkspaceBundle): Promise<WorkspaceBundle | null> {
+export async function syncWorkspaceDerivedData(
+  user: User,
+  bundle: WorkspaceBundle,
+  accessToken?: string,
+): Promise<WorkspaceBundle | null> {
+  const client = getFinanceDataClient(accessToken);
   await ensureSalaryTransactions({
     workspaceId: bundle.workspace.id,
     categories: bundle.categories,
     transactions: bundle.transactions,
     salaryProfiles: bundle.salaryProfiles,
-  });
+  }, client);
   await ensureRecurringTransactions({
     workspaceId: bundle.workspace.id,
     transactions: bundle.transactions,
     recurringTransactions: bundle.recurringTransactions,
-  });
+  }, client);
 
-  const refreshedBundle = await readWorkspaceBundle(user);
+  const refreshedBundle = await readWorkspaceBundle(user, accessToken);
 
   const hasChanged =
     refreshedBundle.transactions.length !== bundle.transactions.length ||
