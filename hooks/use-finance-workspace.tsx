@@ -358,6 +358,12 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     }
   }
 
+  function queueWorkspaceRefresh() {
+    void refreshWorkspaceData().catch(() => {
+      // Mutation handlers should stay responsive even if the follow-up refresh is slow.
+    });
+  }
+
   async function logTransactionHistory(action: "created" | "updated" | "deleted", transaction: Transaction) {
     if (!workspace || !session?.user) return;
     await supabase.from("transaction_history").insert({
@@ -683,7 +689,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         return;
       }
       await replaceTransactionTags(input.id, input.tagIds ?? []);
-      await refreshWorkspaceData();
+      queueWorkspaceRefresh();
       const updated = transactions.find((item) => item.id === input.id);
       if (updated) await logTransactionHistory("updated", { ...updated, ...input });
       setToast({ kind: "success", message: "Transaction updated" });
@@ -705,7 +711,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       await replaceTransactionTags(data.id, input.tagIds);
     }
 
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     await logTransactionHistory("created", {
       id: data.id,
       workspaceId: data.workspace_id,
@@ -734,7 +740,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       const { error } = await supabase.from("transactions").delete().eq("id", transactionId);
       if (!error) {
         await logTransactionHistory("deleted", transaction);
-        await refreshWorkspaceData();
+        queueWorkspaceRefresh();
       }
       setDeletedTransactionPendingUndo(null);
     }, 4000);
@@ -761,7 +767,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: "Category added" });
   }
 
@@ -774,7 +780,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: "Category removed" });
   }
 
@@ -802,7 +808,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
         return;
       }
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: "Budget saved" });
   }
 
@@ -812,7 +818,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: "Budget removed" });
   }
 
@@ -842,7 +848,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: input.id ? "Savings goal updated" : "Savings goal added" });
   }
 
@@ -852,7 +858,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: "Savings goal removed" });
   }
 
@@ -874,7 +880,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({
       kind: "success",
       message: input.direction === "add" ? "Money added to pot" : "Money removed from pot",
@@ -891,6 +897,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
     paymentFrequency: SalaryFrequency;
   }) {
     if (!workspace || !session?.user) return;
+    const existing = salaryProfiles.find((item) => item.profileId === session.user.id);
     const payload = {
       workspace_id: workspace.id,
       profile_id: session.user.id,
@@ -902,15 +909,39 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       first_payment_date: input.firstPaymentDate || null,
       payment_frequency: input.paymentFrequency,
     };
-    const { error } = await supabase.from("salary_profiles").upsert(payload, {
-      onConflict: "workspace_id,profile_id",
-    });
+    const { data, error } = await supabase
+      .from("salary_profiles")
+      .upsert(payload, {
+        onConflict: "workspace_id,profile_id",
+      })
+      .select(
+        "id, workspace_id, profile_id, annual_gross_salary, tax_region, student_loan_plan, postgraduate_loan, tax_code, first_payment_date, payment_frequency",
+      )
+      .single();
     if (error) {
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+
+    const nextSalaryProfile: SalaryProfile = {
+      id: data?.id ?? existing?.id ?? crypto.randomUUID(),
+      workspaceId: data?.workspace_id ?? workspace.id,
+      profileId: data?.profile_id ?? session.user.id,
+      annualGrossSalary: Number(data?.annual_gross_salary ?? input.annualGrossSalary),
+      taxRegion: (data?.tax_region ?? input.taxRegion) as TaxRegion,
+      studentLoanPlan: (data?.student_loan_plan ?? input.studentLoanPlan) as StudentLoanPlan,
+      postgraduateLoan: Boolean(data?.postgraduate_loan ?? input.postgraduateLoan),
+      taxCode: data?.tax_code ?? (input.taxCode.trim() || "1257L"),
+      firstPaymentDate: data?.first_payment_date ?? (input.firstPaymentDate || null),
+      paymentFrequency: (data?.payment_frequency ?? input.paymentFrequency) as SalaryFrequency,
+    };
+
+    setSalaryProfiles((current) => {
+      const otherProfiles = current.filter((item) => item.profileId !== nextSalaryProfile.profileId);
+      return [...otherProfiles, nextSalaryProfile];
+    });
     setToast({ kind: "success", message: "Salary saved" });
+    queueWorkspaceRefresh();
   }
 
   async function deleteSalaryProfile() {
@@ -921,8 +952,9 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    setSalaryProfiles((current) => current.filter((item) => item.id !== existing.id));
     setToast({ kind: "success", message: "Salary profile removed" });
+    queueWorkspaceRefresh();
   }
 
   async function saveRecurringTransaction(input: {
@@ -962,7 +994,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: input.id ? "Recurring transaction updated" : "Recurring transaction saved" });
   }
 
@@ -972,7 +1004,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: "Recurring transaction removed" });
   }
 
@@ -1004,7 +1036,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: input.id ? "Wishlist item updated" : "Wishlist item saved" });
   }
 
@@ -1014,7 +1046,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: "Wishlist item removed" });
   }
 
@@ -1043,7 +1075,7 @@ export function FinanceWorkspaceProvider({ children }: { children: ReactNode }) 
       setToast({ kind: "error", message: error.message });
       return;
     }
-    await refreshWorkspaceData();
+    queueWorkspaceRefresh();
     setToast({ kind: "success", message: "Tag saved" });
   }
 
